@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist /FI \"PID eq 26116\" /FO LIST)",
+      "Bash(wmic process:*)",
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(Select-Object -First 150)",
+      "Bash(Select-Object -Last 20)",
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq C:\\WINDOWS\\system32\\cmd.exe*\" /FI \"STATUS eq Running\")",
+      "Bash(taskkill //F //PID 15760)",
+      "Bash(curl:*)",
+      "Bash(/dev/null)",
+      "Bash(taskkill //F //PID 24480)",
+      "Bash(Get-Content \"C:\\Users\\Alex\\AppData\\Roaming\\claude-code\\logs\\bash_0b6d02.log\" -Tail 100)",
+      "Bash(taskkill //F //PID 37232)",
+      "Bash(taskkill:*)",
+      "Bash(Get-Content \"C:\\Users\\Alex\\AppData\\Roaming\\claude-code\\logs\\bash_09e9e5.log\" -Tail 200)",
+      "Bash(Select-String -Pattern \"model|version|Fetching tags\" -Context 0,2)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(del nul)",
+      "Bash(rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
