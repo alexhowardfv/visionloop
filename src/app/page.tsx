@@ -15,6 +15,7 @@ import { ImageReviewModal } from '@/components/ImageReviewModal';
 import { Notification } from '@/components/Notification';
 import { SettingsModal } from '@/components/SettingsModal';
 import { DataInspector } from '@/components/DataInspector';
+import { DataAnalytics } from '@/components/DataAnalytics';
 import { LoginPinpad } from '@/components/LoginPinpad';
 import { SelectedImage, AddToProjectPayload } from '@/types';
 import { setAuthToken, getStoredAuthToken, clearAuthToken } from '@/lib/api';
@@ -26,6 +27,7 @@ function VisionLoopApp() {
   const [lastBatchTime, setLastBatchTime] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDataInspectorOpen, setIsDataInspectorOpen] = useState(false);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string>('');
@@ -54,6 +56,12 @@ function VisionLoopApp() {
     const storedToken = getStoredAuthToken();
     if (storedToken) {
       setIsAuthenticated(true);
+      // Also restore userId from the API client
+      const apiClient = getAPIClient();
+      const storedUserId = apiClient.getUserId();
+      if (storedUserId) {
+        setUserId(storedUserId);
+      }
     }
   }, []);
 
@@ -390,6 +398,15 @@ function VisionLoopApp() {
     showNotification('Captured data cleared', 'info');
   }, [showNotification]);
 
+  // Handle analytics modal
+  const handleOpenAnalytics = useCallback(() => {
+    setIsAnalyticsOpen(true);
+  }, []);
+
+  const handleCloseAnalytics = useCallback(() => {
+    setIsAnalyticsOpen(false);
+  }, []);
+
   // Handle login modal
   const handleOpenLogin = useCallback(() => {
     setIsLoginOpen(true);
@@ -421,6 +438,7 @@ function VisionLoopApp() {
         overallStatus={state.currentBatch?.overallStatus || 'UNKNOWN'}
         onOpenSettings={handleOpenSettings}
         onOpenDataInspector={handleOpenDataInspector}
+        onOpenAnalytics={handleOpenAnalytics}
         capturedDataCount={capturedData.length}
         onOpenLogin={handleOpenLogin}
         isAuthenticated={isAuthenticated}
@@ -520,6 +538,13 @@ function VisionLoopApp() {
         onClose={handleCloseDataInspector}
         capturedData={capturedData}
         onClearData={handleClearCapturedData}
+      />
+
+      {/* Data Analytics Modal */}
+      <DataAnalytics
+        isOpen={isAnalyticsOpen}
+        onClose={handleCloseAnalytics}
+        capturedData={capturedData}
       />
 
       {/* Login Pinpad Modal */}

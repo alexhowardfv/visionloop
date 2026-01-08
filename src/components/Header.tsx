@@ -6,6 +6,7 @@ import { HeaderProps } from '@/types';
 interface ExtendedHeaderProps extends HeaderProps {
   onOpenSettings?: () => void;
   onOpenDataInspector?: () => void;
+  onOpenAnalytics?: () => void;
   capturedDataCount?: number;
   onOpenLogin?: () => void;
   isAuthenticated?: boolean;
@@ -18,6 +19,7 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
   overallStatus,
   onOpenSettings,
   onOpenDataInspector,
+  onOpenAnalytics,
   capturedDataCount = 0,
   onOpenLogin,
   isAuthenticated = false,
@@ -92,6 +94,32 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
                 )}
               </svg>
               <span>{isAuthenticated ? 'Authenticated' : 'Login'}</span>
+            </button>
+          )}
+
+          {/* Analytics Button - always show so user can import data */}
+          {onOpenAnalytics && (
+            <button
+              onClick={onOpenAnalytics}
+              className="relative p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 transition-all"
+              title="Data Analytics"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              {capturedDataCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {capturedDataCount > 99 ? '99+' : capturedDataCount}
+                </span>
+              )}
             </button>
           )}
 

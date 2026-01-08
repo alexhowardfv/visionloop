@@ -68,9 +68,17 @@ export class VisionLoopAPI {
 
   setUserId(userId: string) {
     this.userId = userId;
+    // Persist userId to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('userId', userId);
+    }
   }
 
   getUserId(): string {
+    // If userId is empty, try to restore from localStorage
+    if (!this.userId && typeof window !== 'undefined') {
+      this.userId = localStorage.getItem('userId') || '';
+    }
     return this.userId;
   }
 
@@ -364,13 +372,15 @@ export const setAuthToken = (token: string) => {
 };
 
 export const clearAuthToken = () => {
-  // Clear token from localStorage
+  // Clear token and userId from localStorage
   if (typeof window !== 'undefined') {
     localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
   }
-  // Clear token from API instance if it exists
+  // Clear token and userId from API instance if it exists
   if (apiInstance) {
     apiInstance.setAuthToken('');
+    apiInstance.setUserId('');
   }
 };
 

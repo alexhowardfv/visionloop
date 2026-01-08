@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImageReviewModalProps } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
 
@@ -67,14 +67,6 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     setIsDragging(false);
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    if (e.deltaY < 0) {
-      handleZoomIn();
-    } else {
-      handleZoomOut();
-    }
-  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -260,18 +252,17 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                 Reset
               </button>
               <div className="ml-4 text-text-muted text-xs">
-                {zoom > 1 ? 'Click and drag to pan • Scroll to zoom' : 'Scroll to zoom'}
+                {zoom > 1 ? 'Click and drag to pan' : ''}
               </div>
             </div>
 
             {/* Image Container */}
             <div
-              className="flex-1 overflow-hidden flex items-center justify-center p-6"
+              className="flex-1 overflow-auto flex items-center justify-center p-6"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
-              onWheel={handleWheel}
               style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
             >
               {currentImage.imageData ? (

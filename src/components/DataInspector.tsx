@@ -64,7 +64,7 @@ export const DataInspector: React.FC<DataInspectorProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-primary-lighter">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-teal-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
               <svg
                 className="w-6 h-6 text-white"
                 fill="none"
