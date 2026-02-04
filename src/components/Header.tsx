@@ -2,14 +2,17 @@
 
 import React from 'react';
 import { HeaderProps } from '@/types';
+import { Tooltip } from './Tooltip';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ExtendedHeaderProps extends HeaderProps {
   onOpenSettings?: () => void;
   onOpenDataInspector?: () => void;
   onOpenAnalytics?: () => void;
+  onOpenCollections?: () => void;
   capturedDataCount?: number;
+  collectionCount?: number;
   onOpenLogin?: () => void;
-  isAuthenticated?: boolean;
 }
 
 export const Header: React.FC<ExtendedHeaderProps> = ({
@@ -20,10 +23,13 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
   onOpenSettings,
   onOpenDataInspector,
   onOpenAnalytics,
+  onOpenCollections,
   capturedDataCount = 0,
+  collectionCount = 0,
   onOpenLogin,
-  isAuthenticated = false,
 }) => {
+  const { isAuthenticated } = useAuth();
+
   const getStatusColor = () => {
     switch (overallStatus) {
       case 'PASS':
@@ -97,78 +103,108 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
             </button>
           )}
 
+          {/* Collections Button */}
+          {onOpenCollections && (
+            <Tooltip content="Collection Manager" position="bottom">
+              <button
+                onClick={onOpenCollections}
+                className="relative p-2 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 transition-all"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {collectionCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-cyan-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {collectionCount > 99 ? '99+' : collectionCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+          )}
+
           {/* Analytics Button - always show so user can import data */}
           {onOpenAnalytics && (
-            <button
-              onClick={onOpenAnalytics}
-              className="relative p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 transition-all"
-              title="Data Analytics"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <Tooltip content="Data Analytics" position="bottom">
+              <button
+                onClick={onOpenAnalytics}
+                className="relative p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 hover:text-purple-300 transition-all"
               >
-                <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-              </svg>
-              {capturedDataCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {capturedDataCount > 99 ? '99+' : capturedDataCount}
-                </span>
-              )}
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                {capturedDataCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {capturedDataCount > 99 ? '99+' : capturedDataCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
           )}
 
           {/* Data Inspector Button */}
           {onOpenDataInspector && (
-            <button
-              onClick={onOpenDataInspector}
-              className="relative p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
-              title="Data Inspector"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <Tooltip content="Data Inspector" position="bottom">
+              <button
+                onClick={onOpenDataInspector}
+                className="relative p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
               >
-                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              {capturedDataCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {capturedDataCount > 99 ? '99+' : capturedDataCount}
-                </span>
-              )}
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                {capturedDataCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {capturedDataCount > 99 ? '99+' : capturedDataCount}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
           )}
 
           {/* Settings Button */}
           {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              className="p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
-              title="Connection Settings"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <Tooltip content="Connection Settings" position="bottom">
+              <button
+                onClick={onOpenSettings}
+                className="p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
               >
-                <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                  <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+              </button>
+            </Tooltip>
           )}
 
           {/* Pause/Resume Button */}

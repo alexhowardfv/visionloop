@@ -2,8 +2,10 @@
 
 import React from 'react';
 import { FooterProps } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
-export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, queueLength, fps, socketHost, socketPort, model, version, userId }) => {
+export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, queueLength, fps, socketHost, socketPort, model, version }) => {
+  const { userId } = useAuth();
   const getTimeSinceUpdate = () => {
     if (lastUpdateTime === 0) return 'N/A';
     const diff = Date.now() - lastUpdateTime;

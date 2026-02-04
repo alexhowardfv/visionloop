@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ImageReviewModalProps } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
+import { Tooltip } from './Tooltip';
 
 export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   isOpen,
@@ -221,36 +222,39 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
           <div className="flex-1 flex flex-col bg-black">
             {/* Zoom Controls */}
             <div className="flex items-center justify-center gap-2 p-3 bg-black/50 border-b border-border/30">
-              <button
-                onClick={handleZoomOut}
-                className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all flex items-center gap-1.5"
-                title="Zoom Out"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
-                </svg>
-                <span className="text-xs">Zoom Out</span>
-              </button>
+              <Tooltip content="Zoom Out (−)" position="bottom">
+                <button
+                  onClick={handleZoomOut}
+                  className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                  </svg>
+                  <span className="text-xs">Zoom Out</span>
+                </button>
+              </Tooltip>
               <div className="px-4 py-1.5 bg-primary-lighter rounded-lg text-white text-sm font-mono min-w-[80px] text-center">
                 {Math.round(zoom * 100)}%
               </div>
-              <button
-                onClick={handleZoomIn}
-                className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all flex items-center gap-1.5"
-                title="Zoom In"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
-                </svg>
-                <span className="text-xs">Zoom In</span>
-              </button>
-              <button
-                onClick={handleResetZoom}
-                className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all text-xs"
-                title="Reset Zoom"
-              >
-                Reset
-              </button>
+              <Tooltip content="Zoom In (+)" position="bottom">
+                <button
+                  onClick={handleZoomIn}
+                  className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                  </svg>
+                  <span className="text-xs">Zoom In</span>
+                </button>
+              </Tooltip>
+              <Tooltip content="Reset to 100%" position="bottom">
+                <button
+                  onClick={handleResetZoom}
+                  className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all text-xs"
+                >
+                  Reset
+                </button>
+              </Tooltip>
               <div className="ml-4 text-text-muted text-xs">
                 {zoom > 1 ? 'Click and drag to pan' : ''}
               </div>

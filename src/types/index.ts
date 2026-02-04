@@ -198,5 +198,4 @@ export interface FooterProps {
   socketPort: string;
   model: string;
   version: string;
-  userId?: string;
 }

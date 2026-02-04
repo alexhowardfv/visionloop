@@ -4,6 +4,7 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect } 
 import { AppState, InspectionBatch, SocketInspectionData } from '@/types';
 import { MAX_BATCH_QUEUE } from '@/lib/constants';
 import { processSocketData, setBatchCompleteCallback } from '@/lib/batchProcessor';
+import { addBatchToCollection, setTagColors, getTotalCount } from '@/lib/collectionStore';
 
 type AppAction =
   | { type: 'SET_PAUSED'; payload: boolean }
@@ -209,6 +210,7 @@ interface AppContextValue {
   dispatch: React.Dispatch<AppAction>;
   togglePause: () => void;
   handleSocketData: (data: SocketInspectionData) => void;
+  getCollectionCount: () => number;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -221,7 +223,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBatchCompleteCallback((batch: InspectionBatch) => {
       console.log('[AppContext] Batch completed:', batch.id, 'with', batch.rois.length, 'cameras');
       dispatch({ type: 'ADD_BATCH', payload: batch });
+
+      // Add to collection store for download feature
+      addBatchToCollection(batch.rois);
     });
+  }, []);
+
+  // Sync tag colors to collection store when they change
+  useEffect(() => {
+    if (Object.keys(state.tagColors).length > 0) {
+      setTagColors(state.tagColors);
+    }
+  }, [state.tagColors]);
+
+  // Get collection count for header badge
+  const getCollectionCount = useCallback(() => {
+    return getTotalCount();
   }, []);
 
   const togglePause = useCallback(() => {
@@ -243,6 +260,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatch,
     togglePause,
     handleSocketData,
+    getCollectionCount,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { AppProvider, useAppContext } from '@/contexts/AppContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useNotification } from '@/hooks/useNotification';
 import { getAPIClient } from '@/lib/api';
@@ -17,11 +18,14 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { DataInspector } from '@/components/DataInspector';
 import { DataAnalytics } from '@/components/DataAnalytics';
 import { LoginPinpad } from '@/components/LoginPinpad';
+import { CollectionManager } from '@/components/CollectionManager';
 import { SelectedImage, AddToProjectPayload } from '@/types';
-import { setAuthToken, getStoredAuthToken, clearAuthToken } from '@/lib/api';
+import { clearAll, getTotalCount } from '@/lib/collectionStore';
+import { MAX_BATCH_QUEUE } from '@/lib/constants';
 
 function VisionLoopApp() {
-  const { state, dispatch, togglePause, handleSocketData } = useAppContext();
+  const { state, dispatch, togglePause, handleSocketData, getCollectionCount } = useAppContext();
+  const { isAuthenticated, userId, login, logout } = useAuth();
   const { notification, showNotification, hideNotification } = useNotification();
   const [fps, setFps] = useState(0);
   const [lastBatchTime, setLastBatchTime] = useState(0);
@@ -29,18 +33,19 @@ function VisionLoopApp() {
   const [isDataInspectorOpen, setIsDataInspectorOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userId, setUserId] = useState<string>('');
+  const [isCollectionsOpen, setIsCollectionsOpen] = useState(false);
   const [capturedData, setCapturedData] = useState<any[]>([]);
   const [hasShownConnectNotification, setHasShownConnectNotification] = useState(false);
   // Initialize with empty values - user must configure in settings
   const [socketHost, setSocketHost] = useState('');
   const [socketPort, setSocketPort] = useState('');
+  const [maxBatchQueue, setMaxBatchQueue] = useState(MAX_BATCH_QUEUE);
 
   // Load settings from localStorage after component mounts (client-side only)
   useEffect(() => {
     const savedHost = localStorage.getItem('socketHost');
     const savedPort = localStorage.getItem('socketPort');
+    const savedMaxBatchQueue = localStorage.getItem('maxBatchQueue');
 
     // If no settings saved, open settings modal on first load
     if (!savedHost || !savedPort) {
@@ -49,19 +54,9 @@ function VisionLoopApp() {
       setSocketHost(savedHost);
       setSocketPort(savedPort);
     }
-  }, []);
 
-  // Check for stored auth token on mount
-  useEffect(() => {
-    const storedToken = getStoredAuthToken();
-    if (storedToken) {
-      setIsAuthenticated(true);
-      // Also restore userId from the API client
-      const apiClient = getAPIClient();
-      const storedUserId = apiClient.getUserId();
-      if (storedUserId) {
-        setUserId(storedUserId);
-      }
+    if (savedMaxBatchQueue) {
+      setMaxBatchQueue(parseInt(savedMaxBatchQueue));
     }
   }, []);
 
@@ -356,9 +351,7 @@ function VisionLoopApp() {
 
     if (hostChanged) {
       // Clear ALL application state when changing servers
-      clearAuthToken();
-      setIsAuthenticated(false);
-      setUserId(''); // Clear user ID
+      logout();  // Clears auth via AuthContext (handles localStorage + API instance)
 
       // Clear all selections and tags
       dispatch({ type: 'CLEAR_SELECTIONS' });
@@ -377,12 +370,15 @@ function VisionLoopApp() {
       dispatch({ type: 'SET_AVAILABLE_TAGS', payload: [] });
       dispatch({ type: 'SET_TAG_COLORS', payload: {} });
 
+      // Clear collection store
+      clearAll();
+
       console.log('[Settings] Server changed - cleared all application state');
       showNotification('Server changed. All data cleared. Please log in again.', 'info');
     } else {
       showNotification('Settings saved! Reconnecting...', 'success');
     }
-  }, [socketHost, dispatch, showNotification]);
+  }, [socketHost, dispatch, showNotification, logout]);
 
   // Handle data inspector modal
   const handleOpenDataInspector = useCallback(() => {
@@ -407,6 +403,36 @@ function VisionLoopApp() {
     setIsAnalyticsOpen(false);
   }, []);
 
+  const handleClearAllData = useCallback(() => {
+    setCapturedData([]);
+    clearAll();
+    dispatch({ type: 'CLEAR_BATCH_QUEUE' });
+    dispatch({ type: 'CLEAR_SELECTIONS' });
+    showNotification('All data cleared', 'info');
+  }, [dispatch, showNotification]);
+
+  const handleMaxBatchQueueChange = useCallback((value: number) => {
+    setMaxBatchQueue(value);
+    localStorage.setItem('maxBatchQueue', value.toString());
+    showNotification(`Batch queue size set to ${value}`, 'info');
+  }, [showNotification]);
+
+  // Memoized data stats for settings modal
+  const dataStats = useMemo(() => ({
+    capturedMessages: capturedData.length,
+    collectionImages: getTotalCount(),
+    batchQueueSize: state.batchQueue.length,
+  }), [capturedData.length, state.batchQueue.length]);
+
+  // Handle collections modal
+  const handleOpenCollections = useCallback(() => {
+    setIsCollectionsOpen(true);
+  }, []);
+
+  const handleCloseCollections = useCallback(() => {
+    setIsCollectionsOpen(false);
+  }, []);
+
   // Handle login modal
   const handleOpenLogin = useCallback(() => {
     setIsLoginOpen(true);
@@ -417,16 +443,16 @@ function VisionLoopApp() {
   }, []);
 
   const handleLoginSuccess = useCallback((token: string) => {
-    setAuthToken(token);
-    setIsAuthenticated(true);
-
-    // Get the userId from the API client
+    // Get the userId from the API client (set during apiClient.login())
     const apiClient = getAPIClient();
     const loggedInUserId = apiClient.getUserId();
-    setUserId(loggedInUserId);
+
+    // Update AuthContext - single source of truth
+    // This also syncs to localStorage and API instance via useEffect
+    login(token, loggedInUserId);
 
     showNotification('Successfully logged in', 'success');
-  }, [showNotification]);
+  }, [login, showNotification]);
 
   return (
     <div className="min-h-screen bg-primary">
@@ -439,9 +465,10 @@ function VisionLoopApp() {
         onOpenSettings={handleOpenSettings}
         onOpenDataInspector={handleOpenDataInspector}
         onOpenAnalytics={handleOpenAnalytics}
+        onOpenCollections={handleOpenCollections}
         capturedDataCount={capturedData.length}
+        collectionCount={getCollectionCount()}
         onOpenLogin={handleOpenLogin}
-        isAuthenticated={isAuthenticated}
       />
 
       {/* Main Content Area */}
@@ -497,7 +524,6 @@ function VisionLoopApp() {
         socketPort={socketPort}
         model={state.currentBatch?.model || 'No Data'}
         version={state.currentBatch?.version || 'No Data'}
-        userId={userId}
       />
 
       {/* Image Review Modal */}
@@ -530,6 +556,10 @@ function VisionLoopApp() {
         currentHost={socketHost}
         currentPort={socketPort}
         onSave={handleSaveSettings}
+        maxBatchQueue={maxBatchQueue}
+        onMaxBatchQueueChange={handleMaxBatchQueueChange}
+        onClearAllData={handleClearAllData}
+        dataStats={dataStats}
       />
 
       {/* Data Inspector Modal */}
@@ -545,6 +575,7 @@ function VisionLoopApp() {
         isOpen={isAnalyticsOpen}
         onClose={handleCloseAnalytics}
         capturedData={capturedData}
+        tagColors={state.tagColors}
       />
 
       {/* Login Pinpad Modal */}
@@ -553,14 +584,23 @@ function VisionLoopApp() {
         onClose={handleCloseLogin}
         onLoginSuccess={handleLoginSuccess}
       />
+
+      {/* Collection Manager Modal */}
+      <CollectionManager
+        isOpen={isCollectionsOpen}
+        onClose={handleCloseCollections}
+        tagColors={state.tagColors}
+      />
     </div>
   );
 }
 
 export default function Page() {
   return (
-    <AppProvider>
-      <VisionLoopApp />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <VisionLoopApp />
+      </AppProvider>
+    </AuthProvider>
   );
 }

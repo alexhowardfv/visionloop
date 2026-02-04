@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import { Tooltip } from './Tooltip';
 
 interface Detection {
   tag?: string;
@@ -34,6 +35,7 @@ interface DataAnalyticsProps {
   onClose: () => void;
   capturedData: WebSocketMessage[];
   onImportData?: (data: WebSocketMessage[]) => void;
+  tagColors?: Record<string, string>;
 }
 
 interface TagCount {
@@ -89,6 +91,23 @@ interface AnalyticsData {
   avgProcessingTime: number;
   timeSeries: TimeSeriesPoint[];
   defectPareto: { tag: string; count: number; cumulative: number; cumulativePercent: number }[];
+  // Advanced Results Analytics
+  advancedResults: AdvancedResultsData;
+}
+
+interface AdvancedResultsData {
+  inspectionPassFail: { pass: number; fail: number; total: number; passRate: number };
+  histogramPassFail: { pass: number; fail: number; total: number; passRate: number };
+  overallResult: { pass: number; fail: number; total: number; passRate: number };
+  hasAdvancedData: boolean;
+  correlation: {
+    bothPass: number;
+    bothFail: number;
+    inspectionPassHistogramFail: number;
+    inspectionFailHistogramPass: number;
+  };
+  agreementRate: number;
+  timeSeries: { timestamp: number; hour: string; inspectionPass: number; inspectionFail: number; histogramPass: number; histogramFail: number; overallPass: number; overallFail: number }[];
 }
 
 const COLORS = [
@@ -120,8 +139,9 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
   onClose,
   capturedData,
   onImportData,
+  tagColors = {},
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tags' | 'confidence' | 'quality' | 'heatmap' | 'edge' | 'trends' | 'pareto'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tags' | 'confidence' | 'quality' | 'heatmap' | 'edge' | 'trends' | 'pareto' | 'results'>('overview');
   const [importedData, setImportedData] = useState<WebSocketMessage[]>([]);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.7);
   const [thresholdSimulator, setThresholdSimulator] = useState(0.5);
@@ -170,9 +190,22 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
     const typeCounts: Record<string, number> = {};
     const tagPassFail: Record<string, { pass: number; fail: number; confidences: number[] }> = {};
     const hourlyData: Record<string, { pass: number; fail: number; total: number; timestamp: number }> = {};
+    const advancedHourlyData: Record<string, { inspectionPass: number; inspectionFail: number; histogramPass: number; histogramFail: number; overallPass: number; overallFail: number; timestamp: number }> = {};
     let passCount = 0;
     let failCount = 0;
     let unknownCount = 0;
+
+    // Advanced Results tracking
+    let inspectionPassCount = 0;
+    let inspectionFailCount = 0;
+    let histogramPassCount = 0;
+    let histogramFailCount = 0;
+    let overallPassCount = 0;
+    let overallFailCount = 0;
+    let bothPassCount = 0;
+    let bothFailCount = 0;
+    let inspectionPassHistogramFailCount = 0;
+    let inspectionFailHistogramPassCount = 0;
     let totalDetections = 0;
     let totalProcessingTime = 0;
     let processingTimeCount = 0;
@@ -263,6 +296,79 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
         hourlyData[hourKey].total++;
         if (isPassing) hourlyData[hourKey].pass++;
         else if (status === 'FAIL') hourlyData[hourKey].fail++;
+
+        // Advanced results time series
+        if (!advancedHourlyData[hourKey]) {
+          advancedHourlyData[hourKey] = { inspectionPass: 0, inspectionFail: 0, histogramPass: 0, histogramFail: 0, overallPass: 0, overallFail: 0, timestamp: msg._timestamp };
+        }
+      }
+
+      // Track advanced results (inspection_pass_fail, histogram_pass_fail, overall_result)
+      const inspectionResult = msg.inspection_pass_fail != null ? String(msg.inspection_pass_fail).toLowerCase().trim() : '';
+      const histogramResult = msg.histogram_pass_fail != null ? String(msg.histogram_pass_fail).toLowerCase().trim() : '';
+      const overallResultValue = msg.overall_result != null ? String(msg.overall_result).toLowerCase().trim() : '';
+
+      // Helper to check if value indicates pass or fail/reject/donate
+      const isPass = (val: string) => val === 'pass' || val === 'true' || val === '1';
+      const isFail = (val: string) => val === 'fail' || val === 'reject' || val === 'donate' || val === 'false' || val === '0';
+
+      if (inspectionResult && isPass(inspectionResult)) {
+        inspectionPassCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].inspectionPass++;
+        }
+      } else if (inspectionResult && isFail(inspectionResult)) {
+        inspectionFailCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].inspectionFail++;
+        }
+      }
+
+      if (histogramResult && isPass(histogramResult)) {
+        histogramPassCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].histogramPass++;
+        }
+      } else if (histogramResult && isFail(histogramResult)) {
+        histogramFailCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].histogramFail++;
+        }
+      }
+
+      if (overallResultValue && isPass(overallResultValue)) {
+        overallPassCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].overallPass++;
+        }
+      } else if (overallResultValue && isFail(overallResultValue)) {
+        overallFailCount++;
+        if (msg._timestamp) {
+          const date = new Date(msg._timestamp);
+          const hourKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:00`;
+          if (advancedHourlyData[hourKey]) advancedHourlyData[hourKey].overallFail++;
+        }
+      }
+
+      // Track correlation between inspection and histogram results (only when both have valid values)
+      const inspectionIsValid = inspectionResult && (isPass(inspectionResult) || isFail(inspectionResult));
+      const histogramIsValid = histogramResult && (isPass(histogramResult) || isFail(histogramResult));
+
+      if (inspectionIsValid && histogramIsValid) {
+        if (isPass(inspectionResult) && isPass(histogramResult)) bothPassCount++;
+        else if (isFail(inspectionResult) && isFail(histogramResult)) bothFailCount++;
+        else if (isPass(inspectionResult) && isFail(histogramResult)) inspectionPassHistogramFailCount++;
+        else if (isFail(inspectionResult) && isPass(histogramResult)) inspectionFailHistogramPassCount++;
       }
 
       if (msg.tags && Array.isArray(msg.tags)) {
@@ -410,6 +516,55 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
     const defectRate = totalInspected > 0 ? (failCount / totalInspected) * 100 : 0;
     const avgProcessingTime = processingTimeCount > 0 ? totalProcessingTime / processingTimeCount : 0;
 
+    // Calculate Advanced Results Analytics
+    const inspectionTotal = inspectionPassCount + inspectionFailCount;
+    const histogramTotal = histogramPassCount + histogramFailCount;
+    const overallTotal = overallPassCount + overallFailCount;
+    const correlationTotal = bothPassCount + bothFailCount + inspectionPassHistogramFailCount + inspectionFailHistogramPassCount;
+
+    const advancedResultsTimeSeries = Object.entries(advancedHourlyData)
+      .map(([hour, data]) => ({
+        timestamp: data.timestamp,
+        hour,
+        inspectionPass: data.inspectionPass,
+        inspectionFail: data.inspectionFail,
+        histogramPass: data.histogramPass,
+        histogramFail: data.histogramFail,
+        overallPass: data.overallPass,
+        overallFail: data.overallFail,
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const advancedResults: AdvancedResultsData = {
+      inspectionPassFail: {
+        pass: inspectionPassCount,
+        fail: inspectionFailCount,
+        total: inspectionTotal,
+        passRate: inspectionTotal > 0 ? (inspectionPassCount / inspectionTotal) * 100 : 0,
+      },
+      histogramPassFail: {
+        pass: histogramPassCount,
+        fail: histogramFailCount,
+        total: histogramTotal,
+        passRate: histogramTotal > 0 ? (histogramPassCount / histogramTotal) * 100 : 0,
+      },
+      overallResult: {
+        pass: overallPassCount,
+        fail: overallFailCount,
+        total: overallTotal,
+        passRate: overallTotal > 0 ? (overallPassCount / overallTotal) * 100 : 0,
+      },
+      hasAdvancedData: inspectionTotal > 0 || histogramTotal > 0 || overallTotal > 0,
+      correlation: {
+        bothPass: bothPassCount,
+        bothFail: bothFailCount,
+        inspectionPassHistogramFail: inspectionPassHistogramFailCount,
+        inspectionFailHistogramPass: inspectionFailHistogramPassCount,
+      },
+      agreementRate: correlationTotal > 0 ? ((bothPassCount + bothFailCount) / correlationTotal) * 100 : 0,
+      timeSeries: advancedResultsTimeSeries,
+    };
+
     return {
       tagDistribution,
       passFailDistribution: { pass: passCount, fail: failCount, unknown: unknownCount },
@@ -432,6 +587,7 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
       avgProcessingTime,
       timeSeries,
       defectPareto,
+      advancedResults,
     };
   }, [dataToAnalyze]);
 
@@ -637,23 +793,27 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} className="hidden" />
-            <button onClick={handleImportClick} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm transition-all flex items-center gap-1" title="Import JSON file">
-              <svg className="w-4 h-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-              </svg>
-              Import
-            </button>
-            {analytics.totalMessages > 0 && (
-              <button onClick={handleExportReport} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-white text-sm transition-all flex items-center gap-1" title="Export QC Report">
+            <Tooltip content="Import JSON file" position="bottom">
+              <button onClick={handleImportClick} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm transition-all flex items-center gap-1">
                 <svg className="w-4 h-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
                 </svg>
-                Export Report
+                Import
               </button>
+            </Tooltip>
+            {analytics.totalMessages > 0 && (
+              <Tooltip content="Export QC Report" position="bottom">
+                <button onClick={handleExportReport} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-white text-sm transition-all flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                  </svg>
+                  Export Report
+                </button>
+              </Tooltip>
             )}
             {importedData.length > 0 && (
               <button onClick={handleClearImported} className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-all">
-                Clear
+                Clear Imported
               </button>
             )}
             <button onClick={onClose} className="text-text-secondary hover:text-white transition-colors ml-2">
@@ -675,15 +835,19 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
             { id: 'confidence', label: 'Confidence' },
             { id: 'heatmap', label: 'Heatmap' },
             { id: 'edge', label: 'Edge Cases' },
+            { id: 'results', label: 'Advanced Results', badge: analytics.advancedResults.hasAdvancedData },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-5 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`px-5 py-3 text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${
                 activeTab === tab.id ? 'text-white border-b-2 border-purple-500' : 'text-text-secondary hover:text-white'
               }`}
             >
               {tab.label}
+              {'badge' in tab && tab.badge && (
+                <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
+              )}
             </button>
           ))}
         </div>
@@ -1338,7 +1502,7 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
                                 ? '#EF4444'
                                 : item.count < analytics.medianClassCount
                                 ? '#F59E0B'
-                                : COLORS[index % COLORS.length],
+                                : tagColors[item.tag] || COLORS[index % COLORS.length],
                               minWidth: '40px',
                             }}
                           >
@@ -1822,6 +1986,363 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
                         Showing 50 of {edgeCases.length} edge cases
                       </div>
                     )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Advanced Results Tab */}
+          {activeTab === 'results' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-white text-lg font-semibold">Advanced Results Analytics</h3>
+                <p className="text-text-muted text-sm">Analysis of inspection_pass_fail, histogram_pass_fail, and overall_result</p>
+              </div>
+
+              {!analytics.advancedResults.hasAdvancedData ? (
+                <div className="text-center py-16">
+                  <svg className="w-16 h-16 text-text-muted mx-auto mb-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                    <path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  <p className="text-text-secondary text-lg">No Advanced Results Data Available</p>
+                  <p className="text-text-muted text-sm mt-2">This tab shows analytics when your data includes:</p>
+                  <div className="flex justify-center gap-4 mt-4">
+                    <code className="px-3 py-1 bg-primary-lighter rounded text-cyan-400 text-sm">inspection_pass_fail</code>
+                    <code className="px-3 py-1 bg-primary-lighter rounded text-purple-400 text-sm">histogram_pass_fail</code>
+                    <code className="px-3 py-1 bg-primary-lighter rounded text-amber-400 text-sm">overall_result</code>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Summary KPI Cards */}
+                  <div className="grid grid-cols-4 gap-4">
+                    {/* Inspection Pass/Fail */}
+                    <div className="bg-primary-lighter rounded-lg p-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-cyan-400 text-sm font-medium">Inspection Pass Rate</span>
+                        <svg className="w-5 h-5 text-cyan-400" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                        </svg>
+                      </div>
+                      <p className={`text-3xl font-bold ${analytics.advancedResults.inspectionPassFail.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.inspectionPassFail.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {analytics.advancedResults.inspectionPassFail.total > 0 ? `${analytics.advancedResults.inspectionPassFail.passRate.toFixed(1)}%` : 'N/A'}
+                      </p>
+                      <p className="text-text-muted text-xs mt-1">
+                        {analytics.advancedResults.inspectionPassFail.pass} pass / {analytics.advancedResults.inspectionPassFail.fail} fail
+                      </p>
+                    </div>
+
+                    {/* Histogram Pass/Fail */}
+                    <div className="bg-primary-lighter rounded-lg p-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-purple-400 text-sm font-medium">Histogram Pass Rate</span>
+                        <svg className="w-5 h-5 text-purple-400" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                      </div>
+                      <p className={`text-3xl font-bold ${analytics.advancedResults.histogramPassFail.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.histogramPassFail.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {analytics.advancedResults.histogramPassFail.total > 0 ? `${analytics.advancedResults.histogramPassFail.passRate.toFixed(1)}%` : 'N/A'}
+                      </p>
+                      <p className="text-text-muted text-xs mt-1">
+                        {analytics.advancedResults.histogramPassFail.pass} pass / {analytics.advancedResults.histogramPassFail.fail} fail
+                      </p>
+                    </div>
+
+                    {/* Overall Result */}
+                    <div className="bg-primary-lighter rounded-lg p-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-amber-400 text-sm font-medium">Overall Pass Rate</span>
+                        <svg className="w-5 h-5 text-amber-400" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path>
+                        </svg>
+                      </div>
+                      <p className={`text-3xl font-bold ${analytics.advancedResults.overallResult.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.overallResult.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {analytics.advancedResults.overallResult.total > 0 ? `${analytics.advancedResults.overallResult.passRate.toFixed(1)}%` : 'N/A'}
+                      </p>
+                      <p className="text-text-muted text-xs mt-1">
+                        {analytics.advancedResults.overallResult.pass} pass / {analytics.advancedResults.overallResult.fail} fail
+                      </p>
+                    </div>
+
+                    {/* Agreement Rate */}
+                    <div className="bg-primary-lighter rounded-lg p-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-blue-400 text-sm font-medium">Inspection/Histogram Agreement</span>
+                        <svg className="w-5 h-5 text-blue-400" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                        </svg>
+                      </div>
+                      <p className={`text-3xl font-bold ${analytics.advancedResults.agreementRate >= 90 ? 'text-green-400' : analytics.advancedResults.agreementRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {analytics.advancedResults.correlation.bothPass + analytics.advancedResults.correlation.bothFail + analytics.advancedResults.correlation.inspectionPassHistogramFail + analytics.advancedResults.correlation.inspectionFailHistogramPass > 0
+                          ? `${analytics.advancedResults.agreementRate.toFixed(1)}%`
+                          : 'N/A'}
+                      </p>
+                      <p className="text-text-muted text-xs mt-1">
+                        Inspection & Histogram agree
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Comparison Charts Row */}
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Side by Side Comparison */}
+                    <div className="bg-primary-lighter rounded-xl p-6">
+                      <h4 className="text-white font-semibold mb-4">Pass/Fail Comparison</h4>
+                      <div className="space-y-4">
+                        {/* Inspection Bar */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-cyan-400">Inspection</span>
+                            <span className="text-text-muted">{analytics.advancedResults.inspectionPassFail.total} total</span>
+                          </div>
+                          <div className="h-8 bg-primary rounded-lg overflow-hidden flex">
+                            <div
+                              className="bg-green-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.inspectionPassFail.total > 0 ? (analytics.advancedResults.inspectionPassFail.pass / analytics.advancedResults.inspectionPassFail.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.inspectionPassFail.pass > 0 && analytics.advancedResults.inspectionPassFail.pass}
+                            </div>
+                            <div
+                              className="bg-red-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.inspectionPassFail.total > 0 ? (analytics.advancedResults.inspectionPassFail.fail / analytics.advancedResults.inspectionPassFail.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.inspectionPassFail.fail > 0 && analytics.advancedResults.inspectionPassFail.fail}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Histogram Bar */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-purple-400">Histogram</span>
+                            <span className="text-text-muted">{analytics.advancedResults.histogramPassFail.total} total</span>
+                          </div>
+                          <div className="h-8 bg-primary rounded-lg overflow-hidden flex">
+                            <div
+                              className="bg-green-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.histogramPassFail.total > 0 ? (analytics.advancedResults.histogramPassFail.pass / analytics.advancedResults.histogramPassFail.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.histogramPassFail.pass > 0 && analytics.advancedResults.histogramPassFail.pass}
+                            </div>
+                            <div
+                              className="bg-red-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.histogramPassFail.total > 0 ? (analytics.advancedResults.histogramPassFail.fail / analytics.advancedResults.histogramPassFail.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.histogramPassFail.fail > 0 && analytics.advancedResults.histogramPassFail.fail}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Overall Bar */}
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-amber-400">Overall</span>
+                            <span className="text-text-muted">{analytics.advancedResults.overallResult.total} total</span>
+                          </div>
+                          <div className="h-8 bg-primary rounded-lg overflow-hidden flex">
+                            <div
+                              className="bg-green-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.overallResult.total > 0 ? (analytics.advancedResults.overallResult.pass / analytics.advancedResults.overallResult.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.overallResult.pass > 0 && analytics.advancedResults.overallResult.pass}
+                            </div>
+                            <div
+                              className="bg-red-500 h-full transition-all duration-500 flex items-center justify-center text-xs font-medium text-white"
+                              style={{ width: `${analytics.advancedResults.overallResult.total > 0 ? (analytics.advancedResults.overallResult.fail / analytics.advancedResults.overallResult.total) * 100 : 0}%` }}
+                            >
+                              {analytics.advancedResults.overallResult.fail > 0 && analytics.advancedResults.overallResult.fail}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex justify-center gap-6 mt-4 pt-4 border-t border-border">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded bg-green-500"></div>
+                          <span className="text-text-secondary text-sm">Pass</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded bg-red-500"></div>
+                          <span className="text-text-secondary text-sm">Fail</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Correlation Matrix */}
+                    <div className="bg-primary-lighter rounded-xl p-6">
+                      <h4 className="text-white font-semibold mb-4">Inspection vs Histogram Correlation</h4>
+                      {analytics.advancedResults.correlation.bothPass + analytics.advancedResults.correlation.bothFail + analytics.advancedResults.correlation.inspectionPassHistogramFail + analytics.advancedResults.correlation.inspectionFailHistogramPass === 0 ? (
+                        <div className="flex items-center justify-center h-48 text-text-muted">
+                          No correlation data available
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* 2x2 Matrix */}
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            {/* Header Row */}
+                            <div></div>
+                            <div className="text-text-muted text-xs font-medium py-2">Histogram Pass</div>
+                            <div className="text-text-muted text-xs font-medium py-2">Histogram Fail</div>
+
+                            {/* Inspection Pass Row */}
+                            <div className="text-text-muted text-xs font-medium py-4 text-right pr-2">Inspection Pass</div>
+                            <div className="bg-green-500/20 rounded-lg p-4 border border-green-500/30">
+                              <p className="text-green-400 text-2xl font-bold">{analytics.advancedResults.correlation.bothPass}</p>
+                              <p className="text-green-400/70 text-xs">Both Pass</p>
+                            </div>
+                            <div className="bg-yellow-500/20 rounded-lg p-4 border border-yellow-500/30">
+                              <p className="text-yellow-400 text-2xl font-bold">{analytics.advancedResults.correlation.inspectionPassHistogramFail}</p>
+                              <p className="text-yellow-400/70 text-xs">Disagreement</p>
+                            </div>
+
+                            {/* Inspection Fail Row */}
+                            <div className="text-text-muted text-xs font-medium py-4 text-right pr-2">Inspection Fail</div>
+                            <div className="bg-yellow-500/20 rounded-lg p-4 border border-yellow-500/30">
+                              <p className="text-yellow-400 text-2xl font-bold">{analytics.advancedResults.correlation.inspectionFailHistogramPass}</p>
+                              <p className="text-yellow-400/70 text-xs">Disagreement</p>
+                            </div>
+                            <div className="bg-red-500/20 rounded-lg p-4 border border-red-500/30">
+                              <p className="text-red-400 text-2xl font-bold">{analytics.advancedResults.correlation.bothFail}</p>
+                              <p className="text-red-400/70 text-xs">Both Fail</p>
+                            </div>
+                          </div>
+
+                          {/* Insights */}
+                          <div className="mt-4 p-3 bg-primary rounded-lg">
+                            <p className="text-text-secondary text-sm">
+                              <span className="text-white font-medium">{analytics.advancedResults.agreementRate.toFixed(1)}%</span> agreement rate between inspection and histogram checks.
+                              {analytics.advancedResults.correlation.inspectionPassHistogramFail + analytics.advancedResults.correlation.inspectionFailHistogramPass > 0 && (
+                                <span className="text-yellow-400 ml-1">
+                                  ({analytics.advancedResults.correlation.inspectionPassHistogramFail + analytics.advancedResults.correlation.inspectionFailHistogramPass} disagreements)
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Time Series */}
+                  {analytics.advancedResults.timeSeries.length > 0 && (
+                    <div className="bg-primary-lighter rounded-xl p-6">
+                      <h4 className="text-white font-semibold mb-4">Results Over Time</h4>
+                      <div className="space-y-3">
+                        {analytics.advancedResults.timeSeries.slice(-12).map((point, idx) => {
+                          const inspectionTotal = point.inspectionPass + point.inspectionFail;
+                          const histogramTotal = point.histogramPass + point.histogramFail;
+                          const overallTotal = point.overallPass + point.overallFail;
+                          return (
+                            <div key={idx} className="grid grid-cols-4 gap-4 items-center py-2 border-b border-border/50 last:border-0">
+                              <div className="text-text-muted text-sm">{point.hour}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-primary rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-cyan-400 transition-all"
+                                    style={{ width: `${inspectionTotal > 0 ? (point.inspectionPass / inspectionTotal) * 100 : 0}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-cyan-400 text-xs w-12 text-right">
+                                  {inspectionTotal > 0 ? `${((point.inspectionPass / inspectionTotal) * 100).toFixed(0)}%` : '-'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-primary rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-purple-400 transition-all"
+                                    style={{ width: `${histogramTotal > 0 ? (point.histogramPass / histogramTotal) * 100 : 0}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-purple-400 text-xs w-12 text-right">
+                                  {histogramTotal > 0 ? `${((point.histogramPass / histogramTotal) * 100).toFixed(0)}%` : '-'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-primary rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-amber-400 transition-all"
+                                    style={{ width: `${overallTotal > 0 ? (point.overallPass / overallTotal) * 100 : 0}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-amber-400 text-xs w-12 text-right">
+                                  {overallTotal > 0 ? `${((point.overallPass / overallTotal) * 100).toFixed(0)}%` : '-'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Legend */}
+                      <div className="flex justify-center gap-6 mt-4 pt-4 border-t border-border">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded bg-cyan-400"></div>
+                          <span className="text-text-secondary text-sm">Inspection</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded bg-purple-400"></div>
+                          <span className="text-text-secondary text-sm">Histogram</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded bg-amber-400"></div>
+                          <span className="text-text-secondary text-sm">Overall</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Stats Table */}
+                  <div className="bg-primary-lighter rounded-xl p-6">
+                    <h4 className="text-white font-semibold mb-4">Detailed Statistics</h4>
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left text-text-muted text-xs font-medium py-3">Metric</th>
+                          <th className="text-center text-cyan-400 text-xs font-medium py-3">Inspection</th>
+                          <th className="text-center text-purple-400 text-xs font-medium py-3">Histogram</th>
+                          <th className="text-center text-amber-400 text-xs font-medium py-3">Overall</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        <tr>
+                          <td className="py-3 text-text-secondary">Pass Count</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.inspectionPassFail.pass}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.histogramPassFail.pass}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.overallResult.pass}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 text-text-secondary">Fail Count</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.inspectionPassFail.fail}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.histogramPassFail.fail}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.overallResult.fail}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 text-text-secondary">Total</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.inspectionPassFail.total}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.histogramPassFail.total}</td>
+                          <td className="py-3 text-center text-white font-medium">{analytics.advancedResults.overallResult.total}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 text-text-secondary">Pass Rate</td>
+                          <td className="py-3 text-center">
+                            <span className={`font-medium ${analytics.advancedResults.inspectionPassFail.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.inspectionPassFail.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {analytics.advancedResults.inspectionPassFail.total > 0 ? `${analytics.advancedResults.inspectionPassFail.passRate.toFixed(1)}%` : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-center">
+                            <span className={`font-medium ${analytics.advancedResults.histogramPassFail.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.histogramPassFail.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {analytics.advancedResults.histogramPassFail.total > 0 ? `${analytics.advancedResults.histogramPassFail.passRate.toFixed(1)}%` : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-center">
+                            <span className={`font-medium ${analytics.advancedResults.overallResult.passRate >= 90 ? 'text-green-400' : analytics.advancedResults.overallResult.passRate >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {analytics.advancedResults.overallResult.total > 0 ? `${analytics.advancedResults.overallResult.passRate.toFixed(1)}%` : 'N/A'}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </>
               )}

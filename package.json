@@ -6,7 +6,8 @@
     "dev": "next dev -p 3080",
     "build": "next build",
     "start": "next start -p 3080",
-    "lint": "next lint"
+    "lint": "next lint",
+    "file-server": "node scripts/file-server.js"
   },
   "dependencies": {
     "next": "^14.2.0",
