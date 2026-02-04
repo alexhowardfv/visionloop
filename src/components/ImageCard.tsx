@@ -5,14 +5,14 @@ import { ImageCardProps } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
 
 export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleSelection }) => {
-  const getGradientBorderClass = () => {
+  const getBorderColor = () => {
     switch (roi.result) {
       case 'PASS':
-        return 'gradient-border gradient-border-pass';
+        return 'border-status-pass';
       case 'FAIL':
-        return 'gradient-border gradient-border-fail';
+        return 'border-status-fail';
       default:
-        return 'gradient-border gradient-border-subtle';
+        return 'border-status-unknown';
     }
   };
 
@@ -20,9 +20,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
 
   return (
     <div
-      className={`relative group overflow-hidden transition-all cursor-pointer ${
-        hasImage ? getGradientBorderClass() : 'rounded-lg border-2 border-dashed border-border'
-      } ${isSelected ? 'ring-4 ring-blue-500 shadow-glow-cyan' : ''}`}
+      className={`relative group rounded-lg overflow-hidden transition-all cursor-pointer ${
+        hasImage ? `border-2 ${getBorderColor()}` : 'border-2 border-dashed border-border'
+      } ${isSelected ? 'ring-4 ring-blue-500' : ''}`}
       onClick={onToggleSelection}
     >
       {/* Image or Placeholder */}
@@ -67,9 +67,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
           <div
             className={`px-2 py-1 rounded text-xs font-medium font-display tracking-wider ${
               roi.result === 'PASS'
-                ? 'bg-status-pass/20 text-status-pass text-glow-green'
+                ? 'bg-status-pass/20 text-status-pass'
                 : roi.result === 'FAIL'
-                ? 'bg-status-fail/20 text-status-fail text-glow-red'
+                ? 'bg-status-fail/20 text-status-fail'
                 : 'bg-status-unknown/20 text-status-unknown'
             }`}
           >

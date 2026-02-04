@@ -47,25 +47,25 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
         {/* Logo */}
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-white font-semibold text-lg font-display tracking-wider text-glow-cyan">Flexible Vision Loop</h1>
-            <p className="text-text-muted text-xs tracking-wide">Real-time Inspection</p>
+            <h1 className="text-white font-semibold text-lg">Flexible Vision Loop</h1>
+            <p className="text-text-muted text-xs">Real-time Inspection</p>
           </div>
         </div>
 
         {/* Center Status */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full pulse-glow ${getStatusColor()} ${overallStatus === 'PASS' ? 'text-green-500' : overallStatus === 'FAIL' ? 'text-red-500' : 'text-slate-500'}`}></div>
-            <span className={`text-sm font-medium font-display tracking-wide ${overallStatus === 'PASS' ? 'text-green-400 text-glow-green' : overallStatus === 'FAIL' ? 'text-red-400 text-glow-red' : 'text-white'}`}>{overallStatus}</span>
+            <div className={`w-3 h-3 rounded-full ${getStatusColor()}`}></div>
+            <span className="text-white text-sm font-medium">{overallStatus}</span>
           </div>
 
           <div className="h-6 w-px bg-border"></div>
 
           <div className="flex items-center gap-2">
             <div
-              className={`w-2 h-2 rounded-full pulse-glow ${isConnected ? 'bg-green-500 text-green-500' : 'bg-red-500 text-red-500'}`}
+              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
             ></div>
-            <span className={`text-sm ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
+            <span className="text-text-secondary text-sm">
               {isConnected ? 'Connected' : 'Disconnected'}
             </span>
           </div>
