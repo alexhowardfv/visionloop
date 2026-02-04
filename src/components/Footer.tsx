@@ -19,14 +19,14 @@ export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, queueLength, fps
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="text-text-muted">Model:</span>
-            <span className="text-white font-medium">{model}</span>
+            <span className="text-cyan-400 font-medium text-glow-cyan">{model}</span>
           </div>
 
           <div className="h-4 w-px bg-border"></div>
 
           <div className="flex items-center gap-2">
             <span className="text-text-muted">Version:</span>
-            <span className="text-white font-medium">{version}</span>
+            <span className="text-purple-400 font-medium text-glow-purple">{version}</span>
           </div>
 
           <div className="h-4 w-px bg-border"></div>
@@ -40,7 +40,7 @@ export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, queueLength, fps
 
           <div className="flex items-center gap-2">
             <span className="text-text-muted">Queue:</span>
-            <span className="text-white font-medium">{queueLength} batches</span>
+            <span className="text-blue-400 font-medium text-glow-blue">{queueLength} batches</span>
           </div>
         </div>
 
@@ -54,20 +54,21 @@ export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, queueLength, fps
 
           <div className="flex items-center gap-2">
             <span className="text-text-muted">User ID:</span>
-            <span className="text-yellow-400 font-medium">{userId || 'Not logged in'}</span>
+            <span className="text-yellow-400 font-medium text-glow-yellow">{userId || 'Not logged in'}</span>
           </div>
 
           <div className="h-4 w-px bg-border"></div>
 
           <div className="flex items-center gap-2">
             <span className="text-text-muted">FPS:</span>
-            <span className="text-white font-medium">{fps.toFixed(1)}</span>
+            <span className="text-cyan-400 font-medium text-glow-cyan">{fps.toFixed(1)}</span>
           </div>
 
           <div className="h-4 w-px bg-border"></div>
 
           <div className="flex items-center gap-2">
-            <span className="text-green-500 font-medium">System Active</span>
+            <div className="w-2 h-2 rounded-full bg-green-500 pulse-glow text-green-500 mr-1"></div>
+            <span className="text-green-400 font-medium text-glow-green">System Active</span>
           </div>
         </div>
       </div>

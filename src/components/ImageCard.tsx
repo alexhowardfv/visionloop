@@ -5,14 +5,14 @@ import { ImageCardProps } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
 
 export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleSelection }) => {
-  const getBorderColor = () => {
+  const getGradientBorderClass = () => {
     switch (roi.result) {
       case 'PASS':
-        return 'border-status-pass';
+        return 'gradient-border gradient-border-pass';
       case 'FAIL':
-        return 'border-status-fail';
+        return 'gradient-border gradient-border-fail';
       default:
-        return 'border-status-unknown';
+        return 'gradient-border gradient-border-subtle';
     }
   };
 
@@ -20,9 +20,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
 
   return (
     <div
-      className={`relative group rounded-lg overflow-hidden transition-all cursor-pointer ${
-        hasImage ? `border-2 ${getBorderColor()}` : 'border-2 border-dashed border-border'
-      } ${isSelected ? 'ring-4 ring-blue-500' : ''}`}
+      className={`relative group overflow-hidden transition-all cursor-pointer ${
+        hasImage ? getGradientBorderClass() : 'rounded-lg border-2 border-dashed border-border'
+      } ${isSelected ? 'ring-4 ring-blue-500 shadow-glow-cyan' : ''}`}
       onClick={onToggleSelection}
     >
       {/* Image or Placeholder */}
@@ -65,11 +65,11 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
         {/* Status Badge */}
         <div className="absolute bottom-2 left-2">
           <div
-            className={`px-2 py-1 rounded text-xs font-medium ${
+            className={`px-2 py-1 rounded text-xs font-medium font-display tracking-wider ${
               roi.result === 'PASS'
-                ? 'bg-status-pass/20 text-status-pass'
+                ? 'bg-status-pass/20 text-status-pass text-glow-green'
                 : roi.result === 'FAIL'
-                ? 'bg-status-fail/20 text-status-fail'
+                ? 'bg-status-fail/20 text-status-fail text-glow-red'
                 : 'bg-status-unknown/20 text-status-unknown'
             }`}
           >
