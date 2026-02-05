@@ -26,8 +26,8 @@ class BatchAggregator {
 
     // Extract batch/inspection ID from the message
     // Try multiple possible field names
-    console.log('[BatchProcessor] 🔍 Looking for batch ID in data. Keys:', Object.keys(data));
-    console.log('[BatchProcessor] 🔍 Checking fields - batch_id:', data.batch_id, 'inspection_id:', data.inspection_id, 'run_id:', data.run_id, 'id:', data.id, 'batch:', data.batch);
+    console.log('[BatchProcessor] Looking for batch ID in data. Keys:', Object.keys(data));
+    console.log('[BatchProcessor] Checking fields - batch_id:', data.batch_id, 'inspection_id:', data.inspection_id, 'run_id:', data.run_id, 'id:', data.id, 'batch:', data.batch);
 
     let messageBatchId =
       data.batch_id ||
@@ -46,16 +46,16 @@ class BatchAggregator {
       // If more than BATCH_TIMEOUT_MS has passed since last message, start new batch
       if (!this.currentFallbackBatchId || (timeSinceLastMessage > this.BATCH_TIMEOUT_MS)) {
         this.currentFallbackBatchId = `batch_${now}`;
-        console.log(`[BatchProcessor] ⭐ Starting new fallback batch: ${this.currentFallbackBatchId} (Reason: ${!this.currentFallbackBatchId ? 'no existing batch' : `${timeSinceLastMessage}ms > ${this.BATCH_TIMEOUT_MS}ms`})`);
+        console.log(`[BatchProcessor] Starting new fallback batch: ${this.currentFallbackBatchId} (Reason: ${!this.currentFallbackBatchId ? 'no existing batch' : `${timeSinceLastMessage}ms > ${this.BATCH_TIMEOUT_MS}ms`})`);
       } else {
-        console.log(`[BatchProcessor] ✓ Reusing existing batch: ${this.currentFallbackBatchId}`);
+        console.log(`[BatchProcessor] Reusing existing batch: ${this.currentFallbackBatchId}`);
       }
 
       messageBatchId = this.currentFallbackBatchId;
       this.lastMessageTime = now;
     }
 
-    console.log(`[BatchProcessor] 📥 Processing camera ${camId} for batch ${messageBatchId}`);
+    console.log(`[BatchProcessor] Processing camera ${camId} for batch ${messageBatchId}`);
 
     // Initialize batch if it doesn't exist
     if (!this.batches.has(messageBatchId)) {
@@ -75,29 +75,29 @@ class BatchAggregator {
 
     // Clear existing timeout for this batch
     if (this.batchTimeouts.has(messageBatchId)) {
-      console.log(`[BatchProcessor] ⏱️ Clearing existing timeout for batch ${messageBatchId}`);
+      console.log(`[BatchProcessor] Clearing existing timeout for batch ${messageBatchId}`);
       clearTimeout(this.batchTimeouts.get(messageBatchId));
     }
 
     // Set timeout to finalize this batch
-    console.log(`[BatchProcessor] ⏰ Setting ${this.BATCH_TIMEOUT_MS}ms timeout for batch ${messageBatchId}`);
+    console.log(`[BatchProcessor] Setting ${this.BATCH_TIMEOUT_MS}ms timeout for batch ${messageBatchId}`);
     const timeout = setTimeout(() => {
-      console.log(`[BatchProcessor] 🏁 Timeout fired! Finalizing batch ${messageBatchId} with ${batch.size} cameras`);
+      console.log(`[BatchProcessor] Timeout fired! Finalizing batch ${messageBatchId} with ${batch.size} cameras`);
       this.completedBatches.add(messageBatchId);
       this.batchTimeouts.delete(messageBatchId);
 
       // Build and emit the completed batch
       const completedBatch = this.buildBatch(messageBatchId);
       if (this.onBatchComplete && completedBatch) {
-        console.log(`[BatchProcessor] 📤 Emitting completed batch ${messageBatchId} to callback`);
+        console.log(`[BatchProcessor] Emitting completed batch ${messageBatchId} to callback`);
         this.onBatchComplete(completedBatch);
       } else {
-        console.warn(`[BatchProcessor] ⚠️ Cannot emit batch ${messageBatchId} - callback: ${!!this.onBatchComplete}, batch: ${!!completedBatch}`);
+        console.warn(`[BatchProcessor] Cannot emit batch ${messageBatchId} - callback: ${!!this.onBatchComplete}, batch: ${!!completedBatch}`);
       }
 
       // Clear fallback batch ID if this was a fallback batch
       if (messageBatchId === this.currentFallbackBatchId) {
-        console.log(`[BatchProcessor] 🧹 Clearing fallback batch ID`);
+        console.log(`[BatchProcessor] Clearing fallback batch ID`);
         this.currentFallbackBatchId = null;
       }
 
@@ -123,18 +123,21 @@ class BatchAggregator {
 
     // Extract model info from first message
     const firstMessage = batchData[0]?.[1] || {};
-    console.log('[BatchProcessor] 🔍 First message for model extraction:', {
+    console.log('[BatchProcessor] First message for model extraction:', {
       keys: Object.keys(firstMessage),
       model: firstMessage.model,
       model_version: firstMessage.model_version,
       version: firstMessage.version,
       model_name: firstMessage.model_name,
       project_id: firstMessage.project_id,
+      projectId: firstMessage.projectId,
+      project: firstMessage.project,
     });
     const model = firstMessage.model || firstMessage.model_name || 'Unknown';
     const version = firstMessage.model_version || firstMessage.version || 'Unknown';
-    const project_id = firstMessage.project_id;
-    console.log('[BatchProcessor] 📊 Extracted model:', model, 'version:', version, 'project_id:', project_id);
+    // Try multiple field names for project_id
+    const project_id = firstMessage.project_id || firstMessage.projectId || firstMessage.project || firstMessage.proj_id;
+    console.log('[BatchProcessor] Extracted model:', model, 'version:', version, 'project_id:', project_id || 'NOT FOUND');
 
     // Process all cameras dynamically
     let boxNumber = 1;
@@ -162,19 +165,19 @@ class BatchAggregator {
 
       // Extract from 'tags' field (new format)
       if (cameraData.tags && Array.isArray(cameraData.tags)) {
-        console.log(`[BatchProcessor] 🏷️ Found ${cameraData.tags.length} tags for ${cameraId}`);
+        console.log(`[BatchProcessor] Found ${cameraData.tags.length} tags for ${cameraId}`);
         for (const tagObj of cameraData.tags) {
-          console.log(`[BatchProcessor] 🏷️ Tag object:`, tagObj);
+          console.log(`[BatchProcessor] Tag object:`, tagObj);
 
           // Skip "no_detections" tags
           if (tagObj.tag === 'no_detections') {
-            console.log(`[BatchProcessor] ⏭️ Skipping no_detections tag`);
+            console.log(`[BatchProcessor] Skipping no_detections tag`);
             continue;
           }
 
           // Extract box coordinates - the format is [x1, y1, x2, y2] normalized (0-1)
           const boxArray = tagObj.box || [];
-          console.log(`[BatchProcessor] 📐 Box array:`, boxArray);
+          console.log(`[BatchProcessor] Box array:`, boxArray);
 
           if (boxArray.length >= 4) {
             // Original coordinates from backend
@@ -183,7 +186,7 @@ class BatchAggregator {
             const x2_orig = boxArray[2];
             const y2_orig = boxArray[3];
 
-            console.log(`[BatchProcessor] 📐 Original coords: x1=${x1_orig}, y1=${y1_orig}, x2=${x2_orig}, y2=${y2_orig}`);
+            console.log(`[BatchProcessor] Original coords: x1=${x1_orig}, y1=${y1_orig}, x2=${x2_orig}, y2=${y2_orig}`);
 
             // Transform: Rotate 90° clockwise, then flip vertically
             // For rotate 90° clockwise: (x, y) -> (y, 1-x)
@@ -211,7 +214,7 @@ class BatchAggregator {
               confidence: tagObj.score,
               color: tagObj.flag, // Use the flag field for color
             };
-            console.log(`[BatchProcessor] 📦 Transformed bbox:`, bbox);
+            console.log(`[BatchProcessor] Transformed bbox:`, bbox);
             boundingBoxes.push(bbox);
           }
         }

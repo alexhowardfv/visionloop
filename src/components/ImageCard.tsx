@@ -65,7 +65,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
         {/* Status Badge */}
         <div className="absolute bottom-2 left-2">
           <div
-            className={`px-2 py-1 rounded text-xs font-medium font-display tracking-wider ${
+            className={`px-2 py-1 rounded text-xs font-medium ${
               roi.result === 'PASS'
                 ? 'bg-status-pass/20 text-status-pass'
                 : roi.result === 'FAIL'

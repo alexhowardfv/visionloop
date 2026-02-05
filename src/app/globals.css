@@ -4,9 +4,9 @@
 
 :root {
   /* Background Colors */
-  --bg-primary: #1e1e2e;
-  --bg-secondary: #2d3748;
-  --bg-card: rgba(30, 41, 59, 0.4);
+  --bg-primary: #1c1c1c;
+  --bg-secondary: #2a2a2a;
+  --bg-card: rgba(40, 40, 40, 0.4);
   --border-color: rgba(100, 116, 139, 0.3);
 
   /* Text Colors */

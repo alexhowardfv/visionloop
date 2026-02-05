@@ -56,7 +56,7 @@ export const RandomSamplingCard: React.FC<RandomSamplingCardProps> = ({
           <div className="flex items-center justify-center gap-3">
             {/* FROM */}
             <div className="text-center">
-              <p className="text-text-muted text-xs uppercase tracking-wide mb-1">From</p>
+              <p className="text-text-muted text-xs uppercase mb-1">From</p>
               <p className="text-white text-3xl font-bold">{maxAvailable.toLocaleString()}</p>
               <p className="text-text-muted text-xs">collected</p>
             </div>
@@ -71,7 +71,7 @@ export const RandomSamplingCard: React.FC<RandomSamplingCardProps> = ({
 
             {/* TAKE */}
             <div className="text-center">
-              <p className="text-text-muted text-xs uppercase tracking-wide mb-1">Take</p>
+              <p className="text-text-muted text-xs uppercase mb-1">Take</p>
               <input
                 type="number"
                 min="1"

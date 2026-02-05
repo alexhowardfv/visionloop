@@ -5,15 +5,14 @@ export const createSocketConnection = (host: string, port: string): Socket => {
     transports: ['polling', 'websocket'],
     upgrade: true,
     reconnection: true,
-    reconnectionAttempts: 5,
+    reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
+    reconnectionDelayMax: 10000,
+    randomizationFactor: 0.5,
+    timeout: 30000,
     autoConnect: true,
     withCredentials: false,
-    extraHeaders: {
-      'Access-Control-Allow-Origin': '*',
-    },
+    forceNew: false,
   });
 
   return socket;

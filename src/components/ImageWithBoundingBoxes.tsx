@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { BoundingBox } from '@/types';
 
+interface ImageDimensions {
+  imageDimensions: { width: number; height: number };
+  imagePosition: { left: number; top: number };
+  naturalDimensions?: { width: number; height: number };
+}
+
 interface ImageWithBoundingBoxesProps {
   src: string;
   alt: string;
@@ -10,6 +16,8 @@ interface ImageWithBoundingBoxesProps {
   className?: string;
   zoom?: number;
   showLabels?: boolean;
+  onDimensionsCalculated?: (dims: ImageDimensions) => void;
+  hideBoundingBoxes?: boolean; // Hide built-in bounding boxes when using AnnotationLayer
 }
 
 export const ImageWithBoundingBoxes = ({
@@ -19,6 +27,8 @@ export const ImageWithBoundingBoxes = ({
   className = '',
   zoom = 1,
   showLabels = true,
+  onDimensionsCalculated,
+  hideBoundingBoxes = false,
 }: ImageWithBoundingBoxesProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -61,15 +71,26 @@ export const ImageWithBoundingBoxes = ({
         offsetX = (containerWidth - displayedWidth) / 2;
       }
 
-      setImageDimensions({
+      const newDimensions = {
         width: displayedWidth,
         height: displayedHeight,
-      });
-
-      setImagePosition({
+      };
+      const newPosition = {
         left: offsetX,
         top: offsetY,
-      });
+      };
+
+      setImageDimensions(newDimensions);
+      setImagePosition(newPosition);
+
+      // Notify parent of dimension changes
+      if (onDimensionsCalculated) {
+        onDimensionsCalculated({
+          imageDimensions: newDimensions,
+          imagePosition: newPosition,
+          naturalDimensions: { width: naturalWidth, height: naturalHeight },
+        });
+      }
     };
 
     // Update dimensions when image loads
@@ -84,7 +105,7 @@ export const ImageWithBoundingBoxes = ({
       img.removeEventListener('load', updateDimensions);
       window.removeEventListener('resize', updateDimensions);
     };
-  }, [src]);
+  }, [src, onDimensionsCalculated]);
 
   // Update dimensions when zoom changes
   useEffect(() => {
@@ -121,24 +142,35 @@ export const ImageWithBoundingBoxes = ({
         offsetX = (containerWidth - displayedWidth) / 2;
       }
 
-      setImageDimensions({
+      const newDimensions = {
         width: displayedWidth,
         height: displayedHeight,
-      });
-
-      setImagePosition({
+      };
+      const newPosition = {
         left: offsetX,
         top: offsetY,
-      });
+      };
+
+      setImageDimensions(newDimensions);
+      setImagePosition(newPosition);
+
+      // Notify parent of dimension changes
+      if (onDimensionsCalculated) {
+        onDimensionsCalculated({
+          imageDimensions: newDimensions,
+          imagePosition: newPosition,
+          naturalDimensions: { width: naturalWidth, height: naturalHeight },
+        });
+      }
     }
-  }, [zoom]);
+  }, [zoom, onDimensionsCalculated]);
 
   // Debug logging
   useEffect(() => {
     if (detections && detections.length > 0) {
-      console.log('[ImageWithBoundingBoxes] 📏 Image dimensions (W x H):',
+      console.log('[ImageWithBoundingBoxes] Image dimensions (W x H):',
         `${imageDimensions.width} x ${imageDimensions.height}`);
-      console.log('[ImageWithBoundingBoxes] 📦 First detection (normalized):', detections[0]);
+      console.log('[ImageWithBoundingBoxes] First detection (normalized):', detections[0]);
 
       if (imageDimensions.width > 0) {
         const box = detections[0];
@@ -148,7 +180,7 @@ export const ImageWithBoundingBoxes = ({
           const scaledY = box.y * imageDimensions.height;
           const scaledW = box.width * imageDimensions.width;
           const scaledH = box.height * imageDimensions.height;
-          console.log('[ImageWithBoundingBoxes] 📦 First detection (scaled):',
+          console.log('[ImageWithBoundingBoxes] First detection (scaled):',
             `x=${scaledX.toFixed(1)}, y=${scaledY.toFixed(1)}, w=${scaledW.toFixed(1)}, h=${scaledH.toFixed(1)}`);
         }
       }
@@ -164,8 +196,8 @@ export const ImageWithBoundingBoxes = ({
         className="w-full h-full object-contain"
       />
 
-      {/* Bounding boxes overlay */}
-      {detections && detections.length > 0 && imageDimensions.width > 0 && (
+      {/* Bounding boxes overlay - hidden when using AnnotationLayer */}
+      {!hideBoundingBoxes && detections && detections.length > 0 && imageDimensions.width > 0 && (
         <svg
           className="absolute pointer-events-none"
           style={{

@@ -22,6 +22,19 @@ export interface BoundingBox {
   color?: string; // Hex color from tag flag field
 }
 
+// Manual annotation for user-drawn bounding boxes (matches cloud API format)
+export interface ManualAnnotation {
+  id: string;                         // Client-side unique ID (for editing/deleting)
+  index: number;                      // Sequential index for API
+  title: string;                      // Tag name
+  tool: 'tagBox';                     // Always 'tagBox' for bounding boxes
+  flag?: string;                      // Tag color (hex)
+  shape: {
+    p1: { x: number; y: number };     // Top-left (normalized 0-1)
+    p2: { x: number; y: number };     // Bottom-right (normalized 0-1)
+  };
+}
+
 export interface ROIImage {
   boxNumber: number; // 1-34
   cameraId: string; // e.g., 'CAM3_r0_c0'
@@ -60,6 +73,9 @@ export interface AppState {
   tagColors: Record<string, string>; // Map of tag name to hex color
   selectedTags: string[]; // Currently selected in sidebar
   multiTagMode: boolean;
+
+  // Image annotations (persists when modal closes)
+  imageAnnotations: Map<string, ManualAnnotation[]>; // Key: `${batchId}_${boxNumber}`
 
   // Config
   modelInfo: {
@@ -177,10 +193,16 @@ export interface ImageReviewModalProps {
   onNext: () => void;
   onPrevious: () => void;
   onRemoveImage: (imageKey: string) => void;
-  onAddToProject: (image: SelectedImage, tags: string[]) => Promise<void>;
+  onAddToProject: (image: SelectedImage, tags: string[], annotations: ManualAnnotation[]) => Promise<void>;
   availableTags: string[];
   tagColors: Record<string, string>;
   batchQueue: InspectionBatch[];
+  // Annotation state from AppContext
+  imageAnnotations: Map<string, ManualAnnotation[]>;
+  onSetImageAnnotations: (imageKey: string, annotations: ManualAnnotation[]) => void;
+  onAddAnnotation: (imageKey: string, annotation: ManualAnnotation) => void;
+  onUpdateAnnotation: (imageKey: string, annotationId: string, updates: Partial<ManualAnnotation>) => void;
+  onDeleteAnnotation: (imageKey: string, annotationId: string) => void;
 }
 
 export interface NotificationProps {

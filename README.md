@@ -1,360 +1,502 @@
-# Vision Loop Frontend
+# Visionloop
 
-A real-time inspection system front-end built with Next.js 14, TypeScript, and Socket.io for displaying and reviewing ROI images from industrial quality control systems.
+<div align="center">
+
+**AI-Powered Vision Loop Training Platform**
+
+A real-time industrial inspection system for capturing, annotating, and uploading training data to improve computer vision models.
+
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
+[![Socket.io](https://img.shields.io/badge/Socket.io-4.7-010101?logo=socket.io)](https://socket.io/)
+
+</div>
+
+---
+
+## Overview
+
+Visionloop is a specialized front-end application designed for quality control teams to review, annotate, and submit inspection images to train AI models. It connects to industrial cameras via WebSocket, displays real-time inspection results, and enables operators to add manual annotations that are uploaded to the cloud for model retraining.
+
+### Key Capabilities
+
+- **Real-time Streaming**: Live display of 34 ROI (Region of Interest) images from industrial cameras
+- **Manual Annotation**: Draw bounding boxes directly on images to mark defects
+- **Cloud Upload**: Submit annotated images to FlexibleVision cloud API for model training
+- **Batch Management**: Queue and review the last 5 inspection batches
+- **Multi-Image Selection**: Select images across multiple batches for bulk operations
+- **Dynamic Tag System**: Fetch category labels from the model's category index
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              VISIONLOOP FRONTEND                            │
+│                            (Next.js 14 + TypeScript)                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
+│  │   Header    │    │  ImageGrid  │    │   Sidebar   │    │   Footer    │  │
+│  │  (Controls) │    │  (34 ROIs)  │    │ (Selections)│    │  (Status)   │  │
+│  └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘  │
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        ImageReviewModal                               │  │
+│  │  ┌─────────────────────┐  ┌────────────────────────────────────────┐ │  │
+│  │  │   Image Display     │  │  AnnotationLayer                       │ │  │
+│  │  │   + Bounding Boxes  │  │  - Draw new annotations                │ │  │
+│  │  │   + Zoom/Pan        │  │  - Select/Delete annotations           │ │  │
+│  │  └─────────────────────┘  └────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐    │
+│  │   DataAnalytics    │  │ CollectionManager  │  │  RandomSampling    │    │
+│  │  (Charts/Stats)    │  │ (Image Library)    │  │  (Auto-select)     │    │
+│  └────────────────────┘  └────────────────────┘  └────────────────────┘    │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                              State Management                               │
+│                          (React Context + Reducer)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                │                    │                     │
+                ▼                    ▼                     ▼
+┌───────────────────────┐ ┌─────────────────────┐ ┌─────────────────────────┐
+│   WebSocket Server    │ │   Category Index    │ │  FlexibleVision Cloud   │
+│   (Socket.io :5000)   │ │   Service (:5001)   │ │  API (v1.cloud.*)       │
+│                       │ │                     │ │                         │
+│  - responseMessage    │ │  - /category_index  │ │  - /verify_account      │
+│  - Real-time batches  │ │  - Model tags       │ │  - /capture/annotations │
+└───────────────────────┘ └─────────────────────┘ └─────────────────────────┘
+```
+
+---
 
 ## Features
 
-- **Real-time Image Display**: View 34 ROI images from WebSocket stream
-- **Batch Queue Management**: Pause stream and review last 5 batches
-- **Multi-Batch Selection**: Select images across multiple batches for review
-- **Image Review Modal**: Large-view carousel for detailed defect inspection
-- **Tag-Based Naming**: Assign custom tags to images before submission
-- **Dark Theme UI**: Professional glassmorphism design with status indicators
-- **Dockerized Deployment**: Production-ready containerization
+### Real-time Inspection Display
+
+The main grid displays 34 ROI images from industrial cameras, updating in real-time as batches arrive via WebSocket:
+
+- **PASS/FAIL indicators** with color-coded borders
+- **Camera ID labels** for each ROI position
+- **Batch navigation carousel** for reviewing previous inspections
+- **Pause/Resume** controls for detailed review
+
+### Manual Annotation System
+
+Draw bounding box annotations directly on images:
+
+1. Open the Review Modal by clicking "Review Selected Images"
+2. Click the **Draw Annotations** toggle
+3. Select a tag from the available categories
+4. Click and drag on the image to draw a bounding box
+5. The annotation is automatically associated with the selected tag
+
+Annotations are rendered with:
+- Color-coded boxes matching tag colors
+- Resize handles for adjustment
+- Delete button on hover
+- Coordinate normalization (0-1 range) for any image size
+
+### Cloud Upload Integration
+
+Upload images with annotations to the FlexibleVision cloud:
+
+1. **Authentication**: Login via secure combo code (PIN pad)
+2. **Token Management**: JWT tokens with ACL-based project access
+3. **Project ID Extraction**: Automatically extracted from token's ACL claims
+4. **FormData Upload**: Images sent as multipart/form-data with annotation metadata
+
+The upload format matches the cloud API specification:
+```json
+{
+  "images": "<File>",
+  "names": "filename.jpg",
+  "children": "[{\"index\":0,\"title\":\"defect\",\"tool\":\"tagBox\",\"shape\":{...}}]"
+}
+```
+
+### Data Analytics
+
+Track inspection statistics with the built-in analytics panel:
+
+- Pass/Fail ratios over time
+- Defect category distribution
+- Batch throughput metrics
+- Visual charts and graphs
+
+### Collection Management
+
+Save images to local collections for later review:
+
+- Store images with full metadata
+- Organize by category or date
+- Export collections for offline analysis
+
+---
 
 ## Technology Stack
 
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript (strict mode)
-- **Styling**: Tailwind CSS
-- **Real-time**: Socket.io Client
-- **State Management**: React Context API
-- **Container**: Docker + Docker Compose
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **Framework** | Next.js 14 (App Router) | Server-side rendering, API routes |
+| **Language** | TypeScript 5.0 (strict) | Type safety, intellisense |
+| **Styling** | Tailwind CSS 3.4 | Utility-first styling, dark theme |
+| **Real-time** | Socket.io Client 4.7 | WebSocket communication |
+| **State** | React Context + useReducer | Global state management |
+| **Auth** | JWT/JWE tokens | Secure API authentication |
 
-## Prerequisites
+---
 
-- Node.js 18+ (for local development)
-- Docker & Docker Compose (for containerized deployment)
-- Access to Socket.io server (port 5000)
-- Access to API server (port 8000)
+## Getting Started
 
-## Installation
+### Prerequisites
 
-### Local Development
+- **Node.js 18+** for local development
+- **Docker** (optional) for containerized deployment
+- Access to:
+  - WebSocket server (port 5000)
+  - Category index service (port 5001)
+  - FlexibleVision cloud API
 
-1. **Clone the repository**
+### Installation
+
 ```bash
-cd Visionloop
-```
+# Clone the repository
+git clone https://github.com/alexhowardfv/visionloop.git
+cd visionloop
 
-2. **Install dependencies**
-```bash
+# Install dependencies
 npm install
-```
 
-3. **Configure environment variables**
-```bash
+# Create environment file
 cp .env.example .env.local
 ```
 
-Edit `.env.local` with your configuration:
+### Configuration
+
+Edit `.env.local`:
+
 ```env
+# Socket.io connection
 NEXT_PUBLIC_SOCKET_HOST=localhost
 NEXT_PUBLIC_SOCKET_PORT=5000
+
+# API endpoints
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_MODEL_NAME=DefectNet
-NEXT_PUBLIC_MODEL_VERSION=v2.1
-AUTH_TOKEN=your_auth_token_here
+NEXT_PUBLIC_CATEGORY_INDEX_URL=http://localhost:5001
+
+# Model configuration
+NEXT_PUBLIC_MODEL_NAME=YourModel
+NEXT_PUBLIC_MODEL_VERSION=v1.0
 ```
 
-4. **Run development server**
+### Development
+
 ```bash
+# Start development server
 npm run dev
+
+# With auto-restart on port conflict
+npm run dev:restart
 ```
 
-The application will be available at `http://localhost:6900`
+Open [http://localhost:3080](http://localhost:3080)
 
-### Docker Deployment
-
-1. **Configure environment**
-
-Create a `.env` file or use environment variables:
-```env
-SOCKET_HOST=your-socket-host
-SOCKET_PORT=5000
-API_BASE_URL=http://your-api-host:8000
-MODEL_NAME=DefectNet
-MODEL_VERSION=v2.1
-AUTH_TOKEN=your_auth_token_here
-```
-
-2. **Build and run with Docker Compose**
-```bash
-docker-compose up -d
-```
-
-3. **Check logs**
-```bash
-docker-compose logs -f vision-loop-frontend
-```
-
-4. **Access the application**
-
-Open `http://localhost:6900` in your browser
-
-### Production Build (Manual)
+### Production Build
 
 ```bash
 npm run build
 npm start
 ```
 
-## Configuration
+### Docker Deployment
 
-### Camera Mapping
+```bash
+# Build and run
+docker-compose up -d
 
-The application displays 34 ROI images mapped to specific cameras. The mapping is defined in `src/lib/constants.ts`:
+# View logs
+docker-compose logs -f
 
-- Boxes 1-32: Main inspection cameras (CAM2-CAM9)
-- Box 33: Left side indicator (CAM1)
-- Box 34: Right side indicator (CAM10)
-
-### Tags Configuration
-
-Default tags are defined in `src/lib/constants.ts`. Tags can also be fetched dynamically from the API endpoint:
-
-```
-GET /api/tags?model={modelName}&version={versionNumber}
+# Stop
+docker-compose down
 ```
 
-Default tags:
-- Defect
-- Missing Paint
-- Label Flag
-- Print Defect
-- Scratch
-- Dent
-- Contamination
+---
 
-## API Endpoints
-
-### 1. Get Tags
+## Project Structure
 
 ```
-GET /api/tags?model={modelName}&version={versionNumber}
-Response: { tags: string[] }
+visionloop/
+├── src/
+│   ├── app/                          # Next.js App Router
+│   │   ├── api/                      # API route handlers
+│   │   │   ├── auth/verify/          # Auth proxy to avoid CORS
+│   │   │   └── upload/[projectId]/   # Upload proxy to cloud API
+│   │   ├── page.tsx                  # Main application page
+│   │   ├── layout.tsx                # Root layout with providers
+│   │   └── globals.css               # Global styles & theme
+│   │
+│   ├── components/                   # React components
+│   │   ├── AnnotationLayer.tsx       # Manual bounding box drawing
+│   │   ├── BatchCarousel.tsx         # Batch navigation
+│   │   ├── CollectionManager.tsx     # Image collections
+│   │   ├── DataAnalytics.tsx         # Statistics dashboard
+│   │   ├── DataInspector.tsx         # Debug data viewer
+│   │   ├── Footer.tsx                # Connection status
+│   │   ├── Header.tsx                # Controls & navigation
+│   │   ├── ImageCard.tsx             # Individual ROI display
+│   │   ├── ImageGrid.tsx             # 34-image grid layout
+│   │   ├── ImageReviewModal.tsx      # Large-view image review
+│   │   ├── ImageWithBoundingBoxes.tsx # Detection overlay
+│   │   ├── LoginPinpad.tsx           # Secure combo entry
+│   │   ├── Notification.tsx          # Toast notifications
+│   │   ├── RandomSamplingCard.tsx    # Random image selection
+│   │   ├── SettingsModal.tsx         # Configuration UI
+│   │   ├── Sidebar.tsx               # Selection panel
+│   │   └── Tooltip.tsx               # Hover tooltips
+│   │
+│   ├── contexts/                     # React Context providers
+│   │   ├── AppContext.tsx            # Main app state
+│   │   └── AuthContext.tsx           # Authentication state
+│   │
+│   ├── lib/                          # Utility functions
+│   │   ├── api.ts                    # VisionLoopAPI class
+│   │   ├── batchProcessor.ts         # Batch queue management
+│   │   ├── collectionStore.ts        # IndexedDB storage
+│   │   ├── constants.ts              # App constants
+│   │   ├── imageNaming.ts            # File naming logic
+│   │   └── socket.ts                 # Socket.io client
+│   │
+│   └── types/                        # TypeScript definitions
+│       └── index.ts                  # All interfaces
+│
+├── scripts/                          # Development scripts
+│   ├── dev.bat                       # Windows dev launcher
+│   └── kill-port.js                  # Port cleanup utility
+│
+├── public/                           # Static assets
+├── Dockerfile                        # Container build
+├── docker-compose.yml                # Container orchestration
+├── tailwind.config.ts                # Tailwind theme
+├── tsconfig.json                     # TypeScript config
+└── package.json                      # Dependencies
 ```
 
-### 2. Add to Project
+---
 
-```
-POST /api/project/add
-Headers: { Authorization: Bearer ${authToken} }
-Body: {
-  model: string,
-  version: string,
-  images: [{
-    originalName: string,
-    newName: string,
-    cameraId: string,
-    batchId: string,
-    result: string,
-    imageData: string
-  }]
-}
-Response: { success: boolean, added: number }
-```
+## API Reference
 
-### 3. WebSocket Connection
+### WebSocket Events
 
-```
-Socket Event: "responseMessage"
-Data: {
-  overall_pass_fail: 'PASS' | 'FAIL' | 'UNKNOWN',
-  total_inputs: number,
-  total_time: number,
-  model: string,
-  version: string,
+**Event: `responseMessage`**
+
+Received when a new inspection batch completes:
+
+```typescript
+interface BatchData {
+  id: string;
+  timestamp: number;
+  overall_pass_fail: 'PASS' | 'FAIL' | 'UNKNOWN';
+  model: string;
+  version: string;
+  project_id?: string;
   results: {
     [cameraId: string]: {
-      result: 'PASS' | 'FAIL',
-      reason: string,
-      image: string // Base64 encoded
+      result: 'PASS' | 'FAIL';
+      reason: string;
+      image: string; // Base64 encoded
+      detections?: Detection[];
     }
   }
 }
 ```
 
-## Usage Guide
+### REST Endpoints
 
-### Viewing Real-time Inspection
+**Category Index** (`GET /category_index/{model}/{version}`)
 
-1. The system automatically connects to the WebSocket server
-2. Images update in real-time as batches arrive
-3. Status indicators show PASS/FAIL/UNKNOWN for each ROI
+Returns tag names and colors for the model:
 
-### Pausing and Reviewing Batches
-
-1. Click **PAUSE** button in the header
-2. Use the batch carousel to navigate through the last 5 batches
-3. Click **RESUME** to return to live streaming mode
-
-### Selecting and Reviewing Images
-
-1. **Select images**: Click on any image card to select/deselect
-2. **Multi-batch selection**: Navigate between batches while maintaining selections
-3. **Review selected**: Click "Review Selected Images" in the sidebar
-4. **Large view inspection**: Use the modal to inspect each image in detail
-
-### Tagging and Adding to Project
-
-1. **In Review Modal**:
-   - Select one or more tags for the current image
-   - Click "Add This Image to Project" to submit single image
-   - Click "Add All Remaining" to batch submit with same tags
-
-2. **Multi-tag mode** (Sidebar):
-   - Toggle "Multi-Tag Mode" to select multiple tags simultaneously
-   - Single mode allows only one tag selection at a time
-
-### Keyboard Shortcuts (Review Modal)
-
-- `←` Previous image
-- `→` Next image
-- `Esc` Close modal
-
-## Project Structure
-
-```
-Visionloop/
-├── src/
-│   ├── app/                    # Next.js app router
-│   │   ├── page.tsx           # Main page
-│   │   ├── layout.tsx         # Root layout
-│   │   └── globals.css        # Global styles
-│   ├── components/            # React components
-│   │   ├── Header.tsx
-│   │   ├── ImageCard.tsx
-│   │   ├── ImageGrid.tsx
-│   │   ├── BatchCarousel.tsx
-│   │   ├── Sidebar.tsx
-│   │   ├── ImageReviewModal.tsx
-│   │   ├── Notification.tsx
-│   │   └── Footer.tsx
-│   ├── contexts/              # React context
-│   │   └── AppContext.tsx
-│   ├── hooks/                 # Custom hooks
-│   │   ├── useWebSocket.ts
-│   │   └── useNotification.ts
-│   ├── lib/                   # Utilities
-│   │   ├── api.ts
-│   │   ├── socket.ts
-│   │   ├── batchProcessor.ts
-│   │   ├── imageNaming.ts
-│   │   └── constants.ts
-│   └── types/                 # TypeScript definitions
-│       └── index.ts
-├── public/                    # Static assets
-├── Dockerfile                 # Docker configuration
-├── docker-compose.yml         # Docker Compose setup
-├── package.json               # Dependencies
-├── tsconfig.json              # TypeScript config
-├── tailwind.config.ts         # Tailwind CSS config
-└── README.md                  # This file
+```json
+{
+  "1": { "id": 1, "name": "defect_#ff0000_tagBox" },
+  "2": { "id": 2, "name": "scratch_#00ff00_tagBox" }
+}
 ```
 
-## Docker Commands
+**Auth Verify** (`POST /verify_account`)
 
-```bash
-# Build the image
-docker-compose build
+Authenticates user and returns JWT tokens:
 
-# Start the container
-docker-compose up -d
-
-# Stop the container
-docker-compose down
-
-# View logs
-docker-compose logs -f
-
-# Restart the container
-docker-compose restart
-
-# Execute commands in container
-docker-compose exec vision-loop-frontend sh
+```json
+{
+  "access_token": { "token": "eyJ..." },
+  "user_info": {
+    "logged_in_as": {
+      "user_id": "uuid",
+      "email": "user@example.com"
+    }
+  }
+}
 ```
 
-## Environment Variables Reference
+**Image Upload** (`POST /api/capture/annotations/upload/{projectId}`)
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `NEXT_PUBLIC_SOCKET_HOST` | Socket.io server hostname | localhost | Yes |
-| `NEXT_PUBLIC_SOCKET_PORT` | Socket.io server port | 5000 | Yes |
-| `NEXT_PUBLIC_API_BASE_URL` | API server base URL | http://localhost:8000 | Yes |
-| `NEXT_PUBLIC_MODEL_NAME` | Inspection model name | DefectNet | Yes |
-| `NEXT_PUBLIC_MODEL_VERSION` | Model version | v2.1 | Yes |
-| `AUTH_TOKEN` | API authentication token | - | Yes |
-| `PORT` | Application port | 6900 | No |
+Uploads images with annotations to cloud storage.
+
+---
+
+## UI Components
+
+### Image Review Modal
+
+The modal provides detailed image inspection:
+
+| Control | Function |
+|---------|----------|
+| **Zoom +/-** | Scale image 0.5x to 5x |
+| **Reset** | Return to 100% zoom |
+| **Fit** | Auto-fit image to window height |
+| **Draw Annotations** | Toggle annotation mode |
+| **Tag Selector** | Choose annotation category |
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `←` | Previous image |
+| `→` | Next image |
+| `Esc` | Close modal |
+| `Delete` | Remove selected annotation |
+
+---
+
+## Configuration Options
+
+### Settings Modal
+
+Runtime-configurable options:
+
+- **Socket Host**: WebSocket server hostname
+- **Auto-pause**: Pause stream when selecting images
+- **Show Timestamps**: Display batch timestamps
+- **Collection Size**: Max stored images
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_SOCKET_HOST` | WebSocket server | localhost |
+| `NEXT_PUBLIC_SOCKET_PORT` | WebSocket port | 5000 |
+| `NEXT_PUBLIC_API_BASE_URL` | REST API base | http://localhost:8000 |
+| `NEXT_PUBLIC_CATEGORY_INDEX_URL` | Category service | http://localhost:5001 |
+
+---
+
+## Development
+
+### Code Style
+
+- **TypeScript strict mode** enforced
+- **Functional components** with hooks
+- **Tailwind utility classes** for styling
+- **Absolute imports** via `@/` alias
+
+### State Management
+
+Application state is managed via React Context with useReducer:
+
+```typescript
+// Key state slices
+interface AppState {
+  isPaused: boolean;
+  batchQueue: ProcessedBatch[];
+  currentBatch: ProcessedBatch | null;
+  selectedImages: Map<string, SelectedImage>;
+  imageAnnotations: Map<string, ManualAnnotation[]>;
+  selectedTags: string[];
+  availableTags: string[];
+  tagColors: Record<string, string>;
+}
+```
+
+### Adding New Features
+
+1. Define types in `src/types/index.ts`
+2. Add state/actions to `src/contexts/AppContext.tsx`
+3. Create component in `src/components/`
+4. Add API methods to `src/lib/api.ts` if needed
+
+---
 
 ## Troubleshooting
 
-### WebSocket Connection Issues
+### WebSocket Connection Failed
 
-1. **Check server availability**
 ```bash
+# Verify server is running
 curl http://{SOCKET_HOST}:{SOCKET_PORT}
+
+# Check browser console for CORS errors
 ```
 
-2. **Verify CORS settings** on the Socket.io server
+### Upload Returns 401 Unauthorized
 
-3. **Check browser console** for connection errors
+1. Re-authenticate via the login pinpad
+2. Check token expiration in console logs
+3. Verify project ID exists in token ACL
 
-### API Request Failures
+### Annotations Not Saving
 
-1. **Verify API_BASE_URL** is correct
-2. **Check AUTH_TOKEN** is valid
-3. **Inspect network tab** in browser DevTools
-
-### Docker Build Failures
-
-1. **Clear Docker cache**
-```bash
-docker-compose build --no-cache
-```
-
-2. **Check Docker logs**
-```bash
-docker-compose logs
-```
+1. Ensure a tag is selected before drawing
+2. Check that tags are loaded from category index
+3. Verify upload proxy is receiving FormData
 
 ### Port Already in Use
 
 ```bash
-# Change port in docker-compose.yml
-ports:
-  - "7000:6900"  # Use port 7000 instead
+# Windows
+netstat -ano | findstr :3080
+taskkill /PID <pid> /F
+
+# Or use the restart script
+npm run dev:restart
 ```
-
-## Performance Optimization
-
-- **Image Compression**: Consider compressing Base64 images on the server
-- **Batch Throttling**: Limit WebSocket message frequency if needed
-- **Lazy Loading**: Images load on-demand in the grid
-- **Memory Management**: Only 5 batches kept in memory (170 images max)
-
-## Security Considerations
-
-- **AUTH_TOKEN**: Never commit tokens to version control
-- **Environment Variables**: Use `.env.local` for local development
-- **HTTPS**: Use HTTPS in production for WebSocket and API
-- **CORS**: Configure appropriate CORS policies on backend
-
-## Browser Support
-
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Edge 90+
-
-## License
-
-Proprietary - All rights reserved
-
-## Support
-
-For issues, questions, or feature requests, contact the development team.
 
 ---
 
-Built with Next.js and TypeScript. Powered by Socket.io for real-time updates.
+## Browser Support
+
+| Browser | Minimum Version |
+|---------|-----------------|
+| Chrome | 90+ |
+| Firefox | 88+ |
+| Safari | 14+ |
+| Edge | 90+ |
+
+---
+
+## License
+
+Proprietary - All rights reserved by FlexibleVision
+
+---
+
+## Contributing
+
+This is an internal tool. For feature requests or bug reports, contact the development team.
+
+---
+
+<div align="center">
+
+**Built with Next.js and TypeScript**
+
+*Real-time inspection powered by Socket.io*
+
+</div>

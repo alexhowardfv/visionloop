@@ -45,30 +45,30 @@ export async function POST(request: NextRequest) {
         const tokenParts = verifyData.access_token.token.split('.');
         if (tokenParts.length >= 2) {
           const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
-          console.log('[Auth Proxy] 👤 DECODED USER FROM access_token:', payload.sub);
-          console.log('[Auth Proxy] 🎯 TOKEN AUDIENCE:', payload.aud);
+          console.log('[Auth Proxy] DECODED USER FROM access_token:', payload.sub);
+          console.log('[Auth Proxy] TOKEN AUDIENCE:', payload.aud);
         }
       } catch (e) {
-        console.log('[Auth Proxy] ⚠️  Could not decode access_token');
+        console.log('[Auth Proxy] Could not decode access_token');
       }
     }
 
     // Check user_info for user details
     if (verifyData.user_info?.logged_in_as) {
-      console.log('[Auth Proxy] 👤 USER FROM user_info:', verifyData.user_info.logged_in_as.user_id);
-      console.log('[Auth Proxy] 📧 USER EMAIL:', verifyData.user_info.logged_in_as.email);
-      console.log('[Auth Proxy] 🌐 SOCKET HOST PROVIDED:', socketHost);
+      console.log('[Auth Proxy] USER FROM user_info:', verifyData.user_info.logged_in_as.user_id);
+      console.log('[Auth Proxy] USER EMAIL:', verifyData.user_info.logged_in_as.email);
+      console.log('[Auth Proxy] SOCKET HOST PROVIDED:', socketHost);
 
       // Log project permissions to see which projects this user has access to
       const projectPerms = verifyData.user_info.logged_in_as.app_metadata?.permissions?.projects;
       if (projectPerms) {
-        console.log('[Auth Proxy] 🔐 USER HAS ACCESS TO PROJECTS:', Object.keys(projectPerms));
+        console.log('[Auth Proxy] USER HAS ACCESS TO PROJECTS:', Object.keys(projectPerms));
       }
     }
 
     // Check if there's a separate user_id field at top level
     if (verifyData.user_id) {
-      console.log('[Auth Proxy] 👤 USER_ID FIELD (top-level):', verifyData.user_id);
+      console.log('[Auth Proxy] USER_ID FIELD (top-level):', verifyData.user_id);
     }
 
     console.log('[Auth Proxy] ==================================================');

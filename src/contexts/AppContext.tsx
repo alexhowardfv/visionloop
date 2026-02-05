@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
-import { AppState, InspectionBatch, SocketInspectionData } from '@/types';
+import { AppState, InspectionBatch, SocketInspectionData, ManualAnnotation } from '@/types';
 import { MAX_BATCH_QUEUE } from '@/lib/constants';
 import { processSocketData, setBatchCompleteCallback } from '@/lib/batchProcessor';
 import { addBatchToCollection, setTagColors, getTotalCount } from '@/lib/collectionStore';
@@ -22,7 +22,13 @@ type AppAction =
   | { type: 'REMOVE_SELECTED_IMAGE'; payload: string }
   | { type: 'ASSIGN_TAGS_TO_IMAGE'; payload: { imageKey: string; tags: string[] } }
   | { type: 'CLEAR_SELECTIONS' }
-  | { type: 'CLEAR_BATCH_QUEUE' };
+  | { type: 'CLEAR_BATCH_QUEUE' }
+  // Annotation actions
+  | { type: 'SET_IMAGE_ANNOTATIONS'; payload: { imageKey: string; annotations: ManualAnnotation[] } }
+  | { type: 'ADD_IMAGE_ANNOTATION'; payload: { imageKey: string; annotation: ManualAnnotation } }
+  | { type: 'UPDATE_IMAGE_ANNOTATION'; payload: { imageKey: string; annotationId: string; updates: Partial<ManualAnnotation> } }
+  | { type: 'DELETE_IMAGE_ANNOTATION'; payload: { imageKey: string; annotationId: string } }
+  | { type: 'CLEAR_IMAGE_ANNOTATIONS'; payload: { imageKey: string } };
 
 const initialState: AppState = {
   isStreamPaused: false,
@@ -37,6 +43,7 @@ const initialState: AppState = {
   tagColors: {},
   selectedTags: [],
   multiTagMode: false,
+  imageAnnotations: new Map(),
   modelInfo: {
     name: '',
     version: '',
@@ -200,6 +207,49 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         queueIndex: 0,
       };
 
+    // Annotation actions
+    case 'SET_IMAGE_ANNOTATIONS': {
+      const { imageKey, annotations } = action.payload;
+      const newAnnotations = new Map(state.imageAnnotations);
+      newAnnotations.set(imageKey, annotations);
+      return { ...state, imageAnnotations: newAnnotations };
+    }
+
+    case 'ADD_IMAGE_ANNOTATION': {
+      const { imageKey, annotation } = action.payload;
+      const newAnnotations = new Map(state.imageAnnotations);
+      const existing = newAnnotations.get(imageKey) || [];
+      newAnnotations.set(imageKey, [...existing, annotation]);
+      return { ...state, imageAnnotations: newAnnotations };
+    }
+
+    case 'UPDATE_IMAGE_ANNOTATION': {
+      const { imageKey, annotationId, updates } = action.payload;
+      const newAnnotations = new Map(state.imageAnnotations);
+      const existing = newAnnotations.get(imageKey) || [];
+      const updated = existing.map(ann =>
+        ann.id === annotationId ? { ...ann, ...updates } : ann
+      );
+      newAnnotations.set(imageKey, updated);
+      return { ...state, imageAnnotations: newAnnotations };
+    }
+
+    case 'DELETE_IMAGE_ANNOTATION': {
+      const { imageKey, annotationId } = action.payload;
+      const newAnnotations = new Map(state.imageAnnotations);
+      const existing = newAnnotations.get(imageKey) || [];
+      const filtered = existing.filter(ann => ann.id !== annotationId);
+      newAnnotations.set(imageKey, filtered);
+      return { ...state, imageAnnotations: newAnnotations };
+    }
+
+    case 'CLEAR_IMAGE_ANNOTATIONS': {
+      const { imageKey } = action.payload;
+      const newAnnotations = new Map(state.imageAnnotations);
+      newAnnotations.delete(imageKey);
+      return { ...state, imageAnnotations: newAnnotations };
+    }
+
     default:
       return state;
   }
@@ -211,6 +261,13 @@ interface AppContextValue {
   togglePause: () => void;
   handleSocketData: (data: SocketInspectionData) => void;
   getCollectionCount: () => number;
+  // Annotation helpers
+  setImageAnnotations: (imageKey: string, annotations: ManualAnnotation[]) => void;
+  addAnnotation: (imageKey: string, annotation: ManualAnnotation) => void;
+  updateAnnotation: (imageKey: string, annotationId: string, updates: Partial<ManualAnnotation>) => void;
+  deleteAnnotation: (imageKey: string, annotationId: string) => void;
+  clearAnnotations: (imageKey: string) => void;
+  getAnnotations: (imageKey: string) => ManualAnnotation[];
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -255,12 +312,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     processSocketData(data);
   }, []);
 
+  // Annotation helper functions
+  const setImageAnnotations = useCallback((imageKey: string, annotations: ManualAnnotation[]) => {
+    dispatch({ type: 'SET_IMAGE_ANNOTATIONS', payload: { imageKey, annotations } });
+  }, []);
+
+  const addAnnotation = useCallback((imageKey: string, annotation: ManualAnnotation) => {
+    dispatch({ type: 'ADD_IMAGE_ANNOTATION', payload: { imageKey, annotation } });
+  }, []);
+
+  const updateAnnotation = useCallback((imageKey: string, annotationId: string, updates: Partial<ManualAnnotation>) => {
+    dispatch({ type: 'UPDATE_IMAGE_ANNOTATION', payload: { imageKey, annotationId, updates } });
+  }, []);
+
+  const deleteAnnotation = useCallback((imageKey: string, annotationId: string) => {
+    dispatch({ type: 'DELETE_IMAGE_ANNOTATION', payload: { imageKey, annotationId } });
+  }, []);
+
+  const clearAnnotations = useCallback((imageKey: string) => {
+    dispatch({ type: 'CLEAR_IMAGE_ANNOTATIONS', payload: { imageKey } });
+  }, []);
+
+  const getAnnotations = useCallback((imageKey: string): ManualAnnotation[] => {
+    return state.imageAnnotations.get(imageKey) || [];
+  }, [state.imageAnnotations]);
+
   const value: AppContextValue = {
     state,
     dispatch,
     togglePause,
     handleSocketData,
     getCollectionCount,
+    setImageAnnotations,
+    addAnnotation,
+    updateAnnotation,
+    deleteAnnotation,
+    clearAnnotations,
+    getAnnotations,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

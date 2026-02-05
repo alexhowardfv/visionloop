@@ -14,10 +14,10 @@ const config: Config = {
       },
       colors: {
         primary: {
-          DEFAULT: '#1e1e2e',
-          lighter: '#2d3748',
+          DEFAULT: '#1c1c1c',
+          lighter: '#2a2a2a',
         },
-        card: 'rgba(30, 41, 59, 0.4)',
+        card: 'rgba(40, 40, 40, 0.4)',
         border: 'rgba(100, 116, 139, 0.3)',
         status: {
           pass: '#22c55e',

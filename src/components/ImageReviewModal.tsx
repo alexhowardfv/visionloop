@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { ImageReviewModalProps } from '@/types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ImageReviewModalProps, ManualAnnotation } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
+import { AnnotationLayer } from './AnnotationLayer';
 import { Tooltip } from './Tooltip';
 
 export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
@@ -17,6 +18,11 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   availableTags,
   tagColors,
   batchQueue,
+  imageAnnotations,
+  onSetImageAnnotations,
+  onAddAnnotation,
+  onUpdateAnnotation,
+  onDeleteAnnotation,
 }) => {
   const [localTags, setLocalTags] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -26,9 +32,26 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
 
+  // Annotation mode state
+  const [isAnnotationMode, setIsAnnotationMode] = useState(false);
+  const [selectedTagForDrawing, setSelectedTagForDrawing] = useState<string | null>(null);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+
+  // Image dimensions for AnnotationLayer positioning
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [imagePosition, setImagePosition] = useState({ left: 0, top: 0 });
+
+  // Ref for the image container to calculate fit-to-window zoom
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const [naturalImageSize, setNaturalImageSize] = useState({ width: 0, height: 0 });
+
   const tags = availableTags.length > 0 ? availableTags : [];
   const currentImage = selectedImages[currentIndex];
   const totalImages = selectedImages.length;
+
+  // Get current image key and annotations
+  const imageKey = currentImage ? `${currentImage.batchId}_${currentImage.boxNumber}` : '';
+  const currentAnnotations = imageAnnotations.get(imageKey) || [];
 
   // Find the batch for the current image to get model and version
   const currentBatch = batchQueue.find(batch => batch.id === currentImage?.batchId);
@@ -39,7 +62,16 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setSelectedAnnotationId(null);
   }, [currentIndex]);
+
+  // Exit annotation mode when zooming past 1x
+  useEffect(() => {
+    if (zoom > 1 && isAnnotationMode) {
+      setIsAnnotationMode(false);
+      setSelectedTagForDrawing(null);
+    }
+  }, [zoom, isAnnotationMode]);
 
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.5, 5));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.5, 0.5));
@@ -48,7 +80,40 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     setPan({ x: 0, y: 0 });
   };
 
+  const handleFitToWindow = useCallback(() => {
+    if (!imageContainerRef.current || naturalImageSize.width === 0) return;
+
+    const container = imageContainerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    // Account for padding (p-6 = 24px on each side)
+    const availableHeight = containerRect.height - 48;
+
+    // Fit to height (Y) while maintaining aspect ratio
+    const scaleY = availableHeight / naturalImageSize.height;
+    const fitZoom = Math.min(scaleY, 5); // Cap at max zoom of 5
+
+    setZoom(Math.max(fitZoom, 0.5)); // Ensure minimum zoom of 0.5
+    setPan({ x: 0, y: 0 });
+  }, [naturalImageSize]);
+
+  // Handle dimension updates from ImageWithBoundingBoxes
+  const handleDimensionsCalculated = useCallback((dims: {
+    imageDimensions: { width: number; height: number };
+    imagePosition: { left: number; top: number };
+    naturalDimensions?: { width: number; height: number };
+  }) => {
+    setImageDimensions(dims.imageDimensions);
+    setImagePosition(dims.imagePosition);
+    if (dims.naturalDimensions) {
+      setNaturalImageSize(dims.naturalDimensions);
+    }
+  }, []);
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Don't handle pan when in annotation mode at 100% zoom
+    if (isAnnotationMode && zoom <= 1) {
+      return;
+    }
     if (zoom > 1) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -68,15 +133,83 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     setIsDragging(false);
   };
 
+  // Toggle annotation mode
+  const toggleAnnotationMode = useCallback(() => {
+    if (zoom > 1) {
+      // Can't enable annotation mode when zoomed in
+      return;
+    }
+    setIsAnnotationMode((prev) => {
+      if (prev) {
+        // Exiting annotation mode
+        setSelectedTagForDrawing(null);
+        setSelectedAnnotationId(null);
+      }
+      return !prev;
+    });
+  }, [zoom]);
 
-  // Keyboard navigation
+  // Handle tag click - different behavior in annotation mode vs normal mode
+  const handleTagClick = (tag: string) => {
+    if (isAnnotationMode) {
+      // In annotation mode, select tag for drawing (single select)
+      setSelectedTagForDrawing((prev) => (prev === tag ? null : tag));
+    } else {
+      // Normal mode - toggle tag for upload
+      setLocalTags((prev) =>
+        prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+      );
+    }
+  };
+
+  // Annotation handlers
+  const handleAddAnnotation = useCallback((annotation: ManualAnnotation) => {
+    onAddAnnotation(imageKey, annotation);
+    // Auto-add the annotation's tag to upload tags (enables the upload button)
+    setLocalTags((prev) =>
+      prev.includes(annotation.title) ? prev : [...prev, annotation.title]
+    );
+  }, [imageKey, onAddAnnotation]);
+
+  const handleUpdateAnnotation = useCallback((annotationId: string, updates: Partial<ManualAnnotation>) => {
+    onUpdateAnnotation(imageKey, annotationId, updates);
+  }, [imageKey, onUpdateAnnotation]);
+
+  const handleDeleteAnnotation = useCallback((annotationId: string) => {
+    onDeleteAnnotation(imageKey, annotationId);
+    if (selectedAnnotationId === annotationId) {
+      setSelectedAnnotationId(null);
+    }
+  }, [imageKey, onDeleteAnnotation, selectedAnnotationId]);
+
+  const handleSelectAnnotation = useCallback((id: string | null) => {
+    setSelectedAnnotationId(id);
+  }, []);
+
+  const handleClearAllAnnotations = useCallback(() => {
+    onSetImageAnnotations(imageKey, []);
+    setSelectedAnnotationId(null);
+  }, [imageKey, onSetImageAnnotations]);
+
+  // Keyboard navigation and shortcuts
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts when typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       switch (e.key) {
         case 'Escape':
-          onClose();
+          if (isAnnotationMode) {
+            setIsAnnotationMode(false);
+            setSelectedTagForDrawing(null);
+            setSelectedAnnotationId(null);
+          } else {
+            onClose();
+          }
           break;
         case 'ArrowLeft':
           if (currentIndex > 0) onPrevious();
@@ -84,18 +217,19 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
         case 'ArrowRight':
           if (currentIndex < totalImages - 1) onNext();
           break;
+        case 'a':
+        case 'A':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            toggleAnnotationMode();
+          }
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, totalImages, onClose, onNext, onPrevious]);
-
-  const handleToggleTag = (tag: string) => {
-    setLocalTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
+  }, [isOpen, currentIndex, totalImages, onClose, onNext, onPrevious, isAnnotationMode, toggleAnnotationMode]);
 
   const handleRemove = () => {
     const imageKey = `${currentImage.batchId}_${currentImage.boxNumber}`;
@@ -120,7 +254,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
 
     setIsProcessing(true);
     try {
-      await onAddToProject(currentImage, localTags);
+      await onAddToProject(currentImage, localTags, currentAnnotations);
       setLocalTags([]);
 
       // Auto-advance to next or close if last
@@ -145,9 +279,12 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
 
     setIsProcessing(true);
     try {
-      // Add all remaining images with the same tags
+      // Add all remaining images with their own annotations
       for (let i = currentIndex; i < totalImages; i++) {
-        await onAddToProject(selectedImages[i], localTags);
+        const img = selectedImages[i];
+        const imgKey = `${img.batchId}_${img.boxNumber}`;
+        const imgAnnotations = imageAnnotations.get(imgKey) || [];
+        await onAddToProject(img, localTags, imgAnnotations);
       }
       setLocalTags([]);
       onClose();
@@ -167,6 +304,17 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
       minute: '2-digit',
       second: '2-digit',
     });
+  };
+
+  // Get cursor style
+  const getCursorStyle = () => {
+    if (isAnnotationMode && zoom <= 1) {
+      return selectedTagForDrawing ? 'crosshair' : 'default';
+    }
+    if (zoom > 1) {
+      return isDragging ? 'grabbing' : 'grab';
+    }
+    return 'default';
   };
 
   if (!isOpen || !currentImage) {
@@ -220,8 +368,34 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
         <div className="flex-1 overflow-y-auto flex">
           {/* Left Side - Large Image Display with Zoom */}
           <div className="flex-1 flex flex-col bg-black">
-            {/* Zoom Controls */}
+            {/* Zoom and Annotation Controls */}
             <div className="flex items-center justify-center gap-2 p-3 bg-black/50 border-b border-border/30">
+              {/* Annotation Mode Toggle */}
+              <Tooltip content={zoom > 1 ? "Zoom out to annotate" : "Toggle Annotation Mode (A)"} position="bottom">
+                <button
+                  onClick={toggleAnnotationMode}
+                  disabled={zoom > 1}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                    isAnnotationMode
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-primary-lighter hover:bg-primary text-white'
+                  } ${zoom > 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  <span className="text-xs">{isAnnotationMode ? 'Drawing' : 'Annotate'}</span>
+                </button>
+              </Tooltip>
+
+              {isAnnotationMode && selectedTagForDrawing && (
+                <div className="px-2 py-1 rounded text-xs text-white bg-opacity-80" style={{ backgroundColor: tagColors[selectedTagForDrawing] || '#3b82f6' }}>
+                  {selectedTagForDrawing}
+                </div>
+              )}
+
+              <div className="w-px h-6 bg-border/50 mx-2" />
+
               <Tooltip content="Zoom Out (−)" position="bottom">
                 <button
                   onClick={handleZoomOut}
@@ -255,23 +429,41 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                   Reset
                 </button>
               </Tooltip>
+              <Tooltip content="Fit image to window" position="bottom">
+                <button
+                  onClick={handleFitToWindow}
+                  className="px-3 py-1.5 bg-primary-lighter hover:bg-primary text-white rounded-lg transition-all flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                  <span className="text-xs">Fit</span>
+                </button>
+              </Tooltip>
               <div className="ml-4 text-text-muted text-xs">
-                {zoom > 1 ? 'Click and drag to pan' : ''}
+                {isAnnotationMode && zoom <= 1
+                  ? selectedTagForDrawing
+                    ? 'Click and drag to draw'
+                    : 'Select a tag to draw'
+                  : zoom > 1
+                  ? 'Click and drag to pan'
+                  : ''}
               </div>
             </div>
 
             {/* Image Container */}
             <div
-              className="flex-1 overflow-auto flex items-center justify-center p-6"
+              ref={imageContainerRef}
+              className="flex-1 overflow-auto flex items-center justify-center p-6 relative"
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
-              style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+              style={{ cursor: getCursorStyle() }}
             >
               {currentImage.imageData ? (
                 <div
-                  className="max-w-full max-h-full select-none"
+                  className="max-w-full max-h-full select-none relative"
                   style={{
                     transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                     transition: isDragging ? 'none' : 'transform 0.1s ease-out',
@@ -284,7 +476,27 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                     className="rounded-lg"
                     zoom={zoom}
                     showLabels={true}
+                    onDimensionsCalculated={handleDimensionsCalculated}
+                    hideBoundingBoxes={isAnnotationMode}
                   />
+                  {/* Annotation Layer - only visible when dimensions are available */}
+                  {imageDimensions.width > 0 && (
+                    <AnnotationLayer
+                      imageDimensions={imageDimensions}
+                      imagePosition={imagePosition}
+                      existingDetections={currentImage.detections}
+                      manualAnnotations={currentAnnotations}
+                      isAnnotationMode={isAnnotationMode && zoom <= 1}
+                      selectedTagForDrawing={selectedTagForDrawing}
+                      tagColors={tagColors}
+                      selectedAnnotationId={selectedAnnotationId}
+                      zoom={zoom}
+                      onAddAnnotation={handleAddAnnotation}
+                      onUpdateAnnotation={handleUpdateAnnotation}
+                      onDeleteAnnotation={handleDeleteAnnotation}
+                      onSelectAnnotation={handleSelectAnnotation}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="text-text-muted">No Image Data</div>
@@ -292,8 +504,45 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
             </div>
           </div>
 
-          {/* Right Sidebar - Metadata */}
+          {/* Right Sidebar - Metadata and Tags */}
           <div className="w-64 bg-gradient-to-b from-primary-lighter to-primary border-l border-border/50 overflow-y-auto">
+            {/* Annotation Tools Section - only visible in annotation mode */}
+            {isAnnotationMode && (
+              <div className="border-b border-border/30 p-4">
+                <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Annotation Tools
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-text-muted">
+                    <span>Annotations:</span>
+                    <span className="text-white font-medium">{currentAnnotations.length}</span>
+                  </div>
+                  {selectedAnnotationId && (
+                    <button
+                      onClick={() => handleDeleteAnnotation(selectedAnnotationId)}
+                      className="w-full px-3 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-all text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Selected
+                    </button>
+                  )}
+                  {currentAnnotations.length > 0 && (
+                    <button
+                      onClick={handleClearAllAnnotations}
+                      className="w-full px-3 py-2 rounded-lg bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 transition-all text-sm"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Collapsible Image Info Section */}
             <div className="border-b border-border/30">
               <button
@@ -319,29 +568,29 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
               {isInfoExpanded && (
                 <div className="px-4 pb-4 space-y-2.5">
                   <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                    <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Model</p>
+                    <p className="text-text-muted text-[10px] uppercase mb-1">Model</p>
                     <p className="text-white text-sm font-semibold">{model}</p>
                   </div>
 
                   <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                    <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Version</p>
+                    <p className="text-text-muted text-[10px] uppercase mb-1">Version</p>
                     <p className="text-white text-sm font-semibold">{version}</p>
                   </div>
 
                   <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                    <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Camera</p>
+                    <p className="text-text-muted text-[10px] uppercase mb-1">Camera</p>
                     <p className="text-white text-sm font-semibold">{currentImage.cameraId}</p>
                   </div>
 
                   <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                    <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Timestamp</p>
+                    <p className="text-text-muted text-[10px] uppercase mb-1">Timestamp</p>
                     <p className="text-white text-sm font-mono">
                       {formatTimestamp(currentImage.timestamp)}
                     </p>
                   </div>
 
                   <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                    <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Batch ID</p>
+                    <p className="text-text-muted text-[10px] uppercase mb-1">Batch ID</p>
                     <p className="text-white text-[11px] font-mono break-all">
                       {currentImage.batchId.split('_')[1]}
                     </p>
@@ -349,7 +598,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
 
                   {currentImage.reason && (
                     <div className="bg-primary/50 rounded-lg p-2.5 border border-border/30">
-                      <p className="text-text-muted text-[10px] uppercase tracking-wider mb-1">Reason</p>
+                      <p className="text-text-muted text-[10px] uppercase mb-1">Reason</p>
                       <p className="text-white text-sm">{currentImage.reason}</p>
                     </div>
                   )}
@@ -363,30 +612,78 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
-                Tag Selection
+                {isAnnotationMode ? 'Select Tag to Draw' : 'Tag Selection'}
               </h3>
               <div className="space-y-2">
                 {tags.map((tag) => {
-                  const isSelected = localTags.includes(tag);
+                  const isSelectedForUpload = localTags.includes(tag);
+                  const isSelectedForDrawing = selectedTagForDrawing === tag;
                   const hexColor = tagColors[tag] || '#666666';
+
+                  // Count annotations with this tag
+                  const tagAnnotationCount = currentAnnotations.filter((a) => a.title === tag).length;
+
+                  if (isAnnotationMode) {
+                    // Annotation mode - single select for drawing
+                    return (
+                      <button
+                        key={tag}
+                        onClick={() => handleTagClick(tag)}
+                        className={`w-full px-3 py-2.5 rounded-lg font-medium text-sm text-left transition-all transform hover:scale-[1.02] ${
+                          isSelectedForDrawing
+                            ? 'text-white shadow-lg border-2 border-white'
+                            : 'bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 hover:border-border/50'
+                        }`}
+                        style={isSelectedForDrawing ? { backgroundColor: hexColor } : undefined}
+                      >
+                        <span className="flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            {isSelectedForDrawing && (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            )}
+                            {tag}
+                          </span>
+                          {tagAnnotationCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-white/20">
+                              {tagAnnotationCount}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  }
+
+                  // Normal mode - multi select for upload
                   return (
                     <button
                       key={tag}
-                      onClick={() => handleToggleTag(tag)}
+                      onClick={() => handleTagClick(tag)}
                       className={`w-full px-3 py-2.5 rounded-lg font-medium text-sm text-left transition-all transform hover:scale-[1.02] ${
-                        isSelected
+                        isSelectedForUpload
                           ? 'text-white shadow-lg border border-white/20'
                           : 'bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 hover:border-border/50'
                       }`}
-                      style={isSelected ? { backgroundColor: hexColor } : undefined}
+                      style={isSelectedForUpload ? { backgroundColor: hexColor } : undefined}
                     >
-                      <span className="flex items-center gap-2">
-                        {isSelected && (
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                      <span className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          {isSelectedForUpload && (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          {tag}
+                        </span>
+                        {tagAnnotationCount > 0 && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs"
+                            style={{ backgroundColor: `${hexColor}40`, color: hexColor }}
+                          >
+                            {tagAnnotationCount}
+                          </span>
                         )}
-                        {tag}
                       </span>
                     </button>
                   );
@@ -429,7 +726,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
               disabled={isProcessing || localTags.length === 0}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-all"
             >
-              {isProcessing ? 'Processing...' : 'Add This Image to Project'}
+              {isProcessing ? 'Processing...' : `Add This Image${currentAnnotations.length > 0 ? ` (${currentAnnotations.length} annotations)` : ''}`}
             </button>
             <button
               onClick={handleAddAllRemaining}

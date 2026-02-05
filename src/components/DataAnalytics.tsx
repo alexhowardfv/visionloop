@@ -1015,7 +1015,7 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
                   <div className="space-y-4 max-h-[280px] overflow-y-auto">
                     {analytics.modelDistribution.length > 0 && (
                       <div>
-                        <p className="text-text-muted text-xs mb-2 uppercase tracking-wider">By Model</p>
+                        <p className="text-text-muted text-xs mb-2 uppercase">By Model</p>
                         {analytics.modelDistribution.slice(0, 3).map((item) => (
                           <div key={item.model} className="flex items-center justify-between py-2 border-b border-border/50">
                             <span className="text-white text-sm">{item.model}</span>
@@ -1031,7 +1031,7 @@ export const DataAnalytics: React.FC<DataAnalyticsProps> = ({
                     )}
                     {analytics.workstationDistribution.length > 0 && (
                       <div>
-                        <p className="text-text-muted text-xs mb-2 uppercase tracking-wider">By Workstation</p>
+                        <p className="text-text-muted text-xs mb-2 uppercase">By Workstation</p>
                         {analytics.workstationDistribution.slice(0, 4).map((item) => (
                           <div key={item.workstation} className="flex items-center justify-between py-2 border-b border-border/50">
                             <span className="text-white text-sm">{item.workstation}</span>

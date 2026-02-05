@@ -19,12 +19,22 @@ import { DataInspector } from '@/components/DataInspector';
 import { DataAnalytics } from '@/components/DataAnalytics';
 import { LoginPinpad } from '@/components/LoginPinpad';
 import { CollectionManager } from '@/components/CollectionManager';
-import { SelectedImage, AddToProjectPayload } from '@/types';
+import { SelectedImage, ManualAnnotation } from '@/types';
 import { clearAll, getTotalCount } from '@/lib/collectionStore';
 import { MAX_BATCH_QUEUE } from '@/lib/constants';
 
 function VisionLoopApp() {
-  const { state, dispatch, togglePause, handleSocketData, getCollectionCount } = useAppContext();
+  const {
+    state,
+    dispatch,
+    togglePause,
+    handleSocketData,
+    getCollectionCount,
+    setImageAnnotations,
+    addAnnotation,
+    updateAnnotation,
+    deleteAnnotation,
+  } = useAppContext();
   const { isAuthenticated, userId, login, logout } = useAuth();
   const { notification, showNotification, hideNotification } = useNotification();
   const [fps, setFps] = useState(0);
@@ -193,51 +203,83 @@ function VisionLoopApp() {
     [dispatch, showNotification]
   );
 
+  // Helper to extract project ID from token's ACL
+  const getProjectIdFromToken = useCallback(() => {
+    try {
+      const apiClient = getAPIClient();
+      const token = apiClient.getCloudToken();
+      if (!token) return null;
+
+      const tokenParts = token.split('.');
+      if (tokenParts.length < 2) return null;
+
+      const payload = JSON.parse(atob(tokenParts[1]));
+      const acl = payload['https://flexiblevision/api/acl'];
+      if (acl && typeof acl === 'object') {
+        // Get the first project ID from ACL (the key is the project UUID)
+        const projectIds = Object.keys(acl);
+        if (projectIds.length > 0) {
+          console.log('[Upload] Extracted project ID from token ACL:', projectIds[0]);
+          return projectIds[0];
+        }
+      }
+    } catch (e) {
+      console.error('[Upload] Failed to extract project ID from token:', e);
+    }
+    return null;
+  }, []);
+
   // Handle add image to project (single image from review modal)
   const handleAddToProject = useCallback(
-    async (image: SelectedImage, tags: string[]) => {
+    async (image: SelectedImage, tags: string[], annotations: ManualAnnotation[] = []) => {
       try {
         const apiClient = getAPIClient();
 
         const originalName = extractOriginalName(image);
         const fileName = generateImageName(tags, originalName, image.cameraId);
 
-        // Get project_id from the batch that the image belongs to
+        // Get project_id from the batch, or fall back to token ACL
         const imageBatch = state.batchQueue.find(batch => batch.id === image.batchId);
-        const projectId = imageBatch?.project_id;
+        let projectId = imageBatch?.project_id;
 
-        if (!projectId) {
-          throw new Error('No project ID found in batch data. Cannot upload image.');
+        // If project_id not in batch or is "unknown", try extracting from token
+        if (!projectId || projectId === 'unknown') {
+          projectId = getProjectIdFromToken();
         }
 
-        console.log('[Upload] Using project UUID from batch:', projectId);
+        if (!projectId) {
+          throw new Error('No project ID found. Cannot upload image.');
+        }
+
+        console.log('[Upload] Using project UUID:', projectId, '(source:', imageBatch?.project_id ? 'batch' : 'token ACL', ')');
+        console.log('[Upload] Uploading with', annotations.length, 'annotations');
 
         const result = await apiClient.uploadImageToProject(
           projectId,
           image.imageData,
-          fileName
+          fileName,
+          annotations
         );
 
-        if (result.id) {
-          const modelName = imageBatch?.model || 'project';
-          showNotification(
-            `Successfully added 1 image to ${modelName} project`,
-            'success'
-          );
+        // If we get here without an error, the upload was successful (200 status)
+        const modelName = imageBatch?.model || 'project';
+        const annotationText = annotations.length > 0 ? ` with ${annotations.length} annotations` : '';
+        showNotification(
+          `Successfully added 1 image${annotationText} to ${modelName} project`,
+          'success'
+        );
 
-          // Remove from selection
-          const imageKey = `${image.batchId}_${image.boxNumber}`;
-          dispatch({ type: 'REMOVE_SELECTED_IMAGE', payload: imageKey });
-        } else {
-          throw new Error('Failed to add image to project');
-        }
+        // Remove from selection and clear annotations
+        const imageKey = `${image.batchId}_${image.boxNumber}`;
+        dispatch({ type: 'REMOVE_SELECTED_IMAGE', payload: imageKey });
+        dispatch({ type: 'CLEAR_IMAGE_ANNOTATIONS', payload: { imageKey } });
       } catch (error) {
         console.error('Error adding to project:', error);
         showNotification('Failed to add image to project', 'error');
         throw error;
       }
     },
-    [state.batchQueue, dispatch, showNotification]
+    [state.batchQueue, dispatch, showNotification, getProjectIdFromToken]
   );
 
   // Handle add all selected images to project (from sidebar button)
@@ -256,11 +298,16 @@ function VisionLoopApp() {
       const apiClient = getAPIClient();
       const selectedArray = Array.from(state.selectedImages.values());
 
-      // Get project_id from the current batch (assuming all selected images are from current batch)
-      const projectId = state.currentBatch?.project_id;
+      // Get project_id from the current batch, or fall back to token ACL
+      let projectId = state.currentBatch?.project_id;
+
+      // If project_id not in batch or is "unknown", try extracting from token
+      if (!projectId || projectId === 'unknown') {
+        projectId = getProjectIdFromToken();
+      }
 
       if (!projectId) {
-        showNotification('No project ID found in batch data. Cannot upload images.', 'error');
+        showNotification('No project ID found. Cannot upload images.', 'error');
         return;
       }
 
@@ -306,7 +353,7 @@ function VisionLoopApp() {
       console.error('Error adding to project:', error);
       showNotification('Failed to add images to project', 'error');
     }
-  }, [state.selectedImages, state.selectedTags, state.currentBatch, dispatch, showNotification]);
+  }, [state.selectedImages, state.selectedTags, state.currentBatch, dispatch, showNotification, getProjectIdFromToken]);
 
   // Handle batch carousel navigation
   const handleBatchNavigate = useCallback(
@@ -539,6 +586,11 @@ function VisionLoopApp() {
         availableTags={state.availableTags}
         tagColors={state.tagColors}
         batchQueue={state.batchQueue}
+        imageAnnotations={state.imageAnnotations}
+        onSetImageAnnotations={setImageAnnotations}
+        onAddAnnotation={addAnnotation}
+        onUpdateAnnotation={updateAnnotation}
+        onDeleteAnnotation={deleteAnnotation}
       />
 
       {/* Notification Toast */}

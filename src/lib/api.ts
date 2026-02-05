@@ -1,4 +1,4 @@
-import { AddToProjectPayload, ImageUploadResponse } from '@/types';
+import { ImageUploadResponse, ManualAnnotation } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -201,13 +201,13 @@ export class VisionLoopAPI {
 
           this.setUserId(responseUserId);
           console.log('[API] ==================== USER IDENTIFICATION ====================');
-          console.log('[API] 👤 USER_ID extracted and set:', responseUserId);
-          console.log('[API] 🌐 From socket host:', socketHost);
-          console.log('[API] 📧 User email:', data.user_info?.logged_in_as?.email || 'N/A');
+          console.log('[API] USER_ID extracted and set:', responseUserId);
+          console.log('[API] From socket host:', socketHost);
+          console.log('[API] User email:', data.user_info?.logged_in_as?.email || 'N/A');
           console.log('[API] ================================================================');
         }
       } catch (e) {
-        console.error('[API] ⚠️  Failed to parse user_id from token:', e);
+        console.error('[API] Failed to parse user_id from token:', e);
       }
     } else {
       console.error('[API] No token found in login response:', data);
@@ -216,40 +216,21 @@ export class VisionLoopAPI {
     return { token };
   }
 
-  async addToProject(payload: AddToProjectPayload): Promise<{ success: boolean; added: number }> {
-    // Use auth base URL for adding to project (requires authentication)
-    const authBaseUrl = this.getAuthBaseUrl();
-    const response = await fetch(`${authBaseUrl}/api/project/add`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.authToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Add to project failed: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
-  }
-
   async uploadImageToProject(
     projectId: string,
     imageData: string,
     fileName: string,
-    tags: string[] = []
+    annotations: ManualAnnotation[] = []
   ): Promise<ImageUploadResponse> {
     const socketHost = getSocketHost();
     console.log('[API] ==================== UPLOAD IMAGE REQUEST ====================');
-    console.log('[API] 🌐 SOCKET HOST (from Settings):', socketHost);
-    console.log('[API] 👤 USER ID (from login):', this.userId);
-    console.log('[API] 📦 Project ID:', projectId);
-    console.log('[API] 📄 File name:', fileName);
-    console.log('[API] 🏷️  Tags:', tags);
-    console.log('[API] 🔑 Auth token present:', !!this.authToken);
-    console.log('[API] 🔑 Cloud token present:', !!this.cloudToken);
+    console.log('[API] SOCKET HOST (from Settings):', socketHost);
+    console.log('[API] USER ID (from login):', this.userId);
+    console.log('[API] Project ID:', projectId);
+    console.log('[API] File name:', fileName);
+    console.log('[API] Annotations:', annotations.length);
+    console.log('[API] Auth token present:', !!this.authToken);
+    console.log('[API] Cloud token present:', !!this.cloudToken);
 
     // Convert base64 to Blob
     const imageBlob = base64ToBlob(imageData);
@@ -266,13 +247,28 @@ export class VisionLoopAPI {
     formData.append('images', file, fileName); // 'images' (plural) not 'image'
     formData.append('names', fileName); // Add 'names' field
 
-    // Add 'children' field as JSON blob (empty array for now)
-    const children: any[] = [];
-    formData.append('children', new Blob([JSON.stringify(children)], { type: 'application/json' }));
+    // Add 'children' field as JSON string with annotation data (matching cloud API format)
+    const now = Date.now();
+    const children = annotations.map((ann, idx) => ({
+      index: idx,
+      tagInstance: `${now + idx}`,
+      title: ann.title,
+      tool: ann.tool,
+      flag: ann.flag || '#3b82f6',
+      regionStyle: {},
+      expanded: false,
+      shape: ann.shape,
+      modified: now,
+      className: null,
+      children: [],
+      locked: false,
+      text: null,
+    }));
+    formData.append('children', JSON.stringify(children));
 
-    // Prepare request - MATCHING WORKING EXAMPLE HEADERS
-    // Use cloudToken (JWE) for cloud API, not local authToken (RS256 JWT)
-    const cloudUrl = `https://v1.cloud.flexiblevision.com/api/capture/annotations/upload/${projectId}`;
+    // Use local proxy to avoid CORS issues
+    // The proxy at /api/upload/[projectId] forwards to the cloud API
+    const uploadUrl = `/api/upload/${projectId}`;
 
     // IMPORTANT: DO NOT set Content-Type for FormData!
     // The browser will automatically set it with the correct boundary:
@@ -290,35 +286,35 @@ export class VisionLoopAPI {
         tokenPayload = JSON.parse(atob(tokenParts[1]));
       }
     } catch (e) {
-      console.log('[API] ⚠️  Could not decode token (might be JWE)');
+      console.log('[API] Could not decode token (might be JWE)');
     }
 
     // Log complete request details
     console.log('[API] ========== COMPLETE REQUEST DETAILS ==========');
-    console.log('[API] 🌐 SOCKET HOST:', socketHost);
-    console.log('[API] 📍 METHOD:', 'POST');
-    console.log('[API] 📍 URL:', cloudUrl);
-    console.log('[API] 📋 HEADERS (before fetch):', JSON.stringify(headers, null, 2));
-    console.log('[API] ℹ️  NOTE: Content-Type will be auto-set by browser with boundary');
-    console.log('[API] 🔑 AUTHORIZATION TOKEN (full):', this.cloudToken);
-    console.log('[API] 🔑 TOKEN LENGTH:', this.cloudToken.length, 'chars');
-    console.log('[API] 🔑 TOKEN PREVIEW (first 100 chars):', this.cloudToken.substring(0, 100) + '...');
-    console.log('[API] 🔑 TOKEN PREVIEW (last 100 chars):', '...' + this.cloudToken.substring(this.cloudToken.length - 100));
+    console.log('[API] SOCKET HOST:', socketHost);
+    console.log('[API] METHOD:', 'POST');
+    console.log('[API] URL:', uploadUrl);
+    console.log('[API] HEADERS (before fetch):', JSON.stringify(headers, null, 2));
+    console.log('[API] NOTE: Content-Type will be auto-set by browser with boundary');
+    console.log('[API] AUTHORIZATION TOKEN (full):', this.cloudToken);
+    console.log('[API] TOKEN LENGTH:', this.cloudToken.length, 'chars');
+    console.log('[API] TOKEN PREVIEW (first 100 chars):', this.cloudToken.substring(0, 100) + '...');
+    console.log('[API] TOKEN PREVIEW (last 100 chars):', '...' + this.cloudToken.substring(this.cloudToken.length - 100));
     if (tokenPayload) {
-      console.log('[API] 🔓 DECODED TOKEN PAYLOAD:', JSON.stringify(tokenPayload, null, 2));
-      console.log('[API] 👤 TOKEN SUB (user):', tokenPayload.sub);
-      console.log('[API] 🎯 TOKEN AUD (audience):', tokenPayload.aud);
-      console.log('[API] ⏰ TOKEN EXP (expiry):', new Date(tokenPayload.exp * 1000).toISOString());
-      console.log('[API] ⏰ TOKEN EXPIRED?:', tokenPayload.exp * 1000 < Date.now());
+      console.log('[API] DECODED TOKEN PAYLOAD:', JSON.stringify(tokenPayload, null, 2));
+      console.log('[API] TOKEN SUB (user):', tokenPayload.sub);
+      console.log('[API] TOKEN AUD (audience):', tokenPayload.aud);
+      console.log('[API] TOKEN EXP (expiry):', new Date(tokenPayload.exp * 1000).toISOString());
+      console.log('[API] TOKEN EXPIRED?:', tokenPayload.exp * 1000 < Date.now());
     }
-    console.log('[API] 📦 BODY TYPE:', 'multipart/form-data (FormData)');
-    console.log('[API] 📦 FORM FIELDS:');
+    console.log('[API] BODY TYPE:', 'multipart/form-data (FormData)');
+    console.log('[API] FORM FIELDS:');
     console.log('[API]   - images:', fileName, '(', file.size, 'bytes)');
     console.log('[API]   - names:', fileName);
     console.log('[API]   - children:', JSON.stringify(children));
     console.log('[API] ==================================================');
 
-    const response = await fetch(cloudUrl, {
+    const response = await fetch(uploadUrl, {
       method: 'POST',
       headers,
       body: formData,
