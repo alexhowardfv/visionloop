@@ -11,6 +11,7 @@ type AppAction =
   | { type: 'SET_CONNECTED'; payload: boolean }
   | { type: 'ADD_BATCH'; payload: InspectionBatch }
   | { type: 'SET_QUEUE_INDEX'; payload: number }
+  | { type: 'TRIM_AND_RESUME' }
   | { type: 'TOGGLE_IMAGE_SELECTION'; payload: { batchId: string; boxNumber: number } }
   | { type: 'SET_REVIEW_MODAL_OPEN'; payload: boolean }
   | { type: 'SET_REVIEW_CAROUSEL_INDEX'; payload: number }
@@ -23,6 +24,7 @@ type AppAction =
   | { type: 'ASSIGN_TAGS_TO_IMAGE'; payload: { imageKey: string; tags: string[] } }
   | { type: 'CLEAR_SELECTIONS' }
   | { type: 'CLEAR_BATCH_QUEUE' }
+  | { type: 'SET_MAX_BATCH_QUEUE'; payload: number }
   // Annotation actions
   | { type: 'SET_IMAGE_ANNOTATIONS'; payload: { imageKey: string; annotations: ManualAnnotation[] } }
   | { type: 'ADD_IMAGE_ANNOTATION'; payload: { imageKey: string; annotation: ManualAnnotation } }
@@ -38,12 +40,14 @@ const initialState: AppState = {
   queueIndex: 0,
   selectedImages: new Map(),
   isReviewModalOpen: false,
+  wasPausedBeforeReview: false,
   reviewCarouselIndex: 0,
   availableTags: [],
   tagColors: {},
   selectedTags: [],
   multiTagMode: false,
   imageAnnotations: new Map(),
+  maxBatchQueue: MAX_BATCH_QUEUE,
   modelInfo: {
     name: '',
     version: '',
@@ -60,41 +64,63 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return { ...state, isConnected: action.payload };
 
     case 'ADD_BATCH': {
+      // If paused, drop incoming batches entirely - queue is frozen for browsing
+      if (state.isStreamPaused) {
+        return state;
+      }
+
       const newQueue = [...state.batchQueue, action.payload];
+
+      // Enforce user-configured queue limit (FIFO: drop oldest first)
+      while (newQueue.length > state.maxBatchQueue) {
+        newQueue.shift();
+      }
+
+      // Reconcile: deselect images whose batch is no longer in the queue
+      const queueBatchIds = new Set(newQueue.map(b => b.id));
       let newSelectedImages = state.selectedImages;
-
-      // Keep only last 5 batches (FIFO)
-      if (newQueue.length > MAX_BATCH_QUEUE) {
-        const removedBatch = newQueue.shift();
-
-        // Clean up selected images from the removed batch
-        if (removedBatch) {
-          const updatedSelectedImages = new Map(state.selectedImages);
-          // Remove all images that have the removed batch's ID
-          for (const [imageKey] of updatedSelectedImages) {
-            if (imageKey.startsWith(`${removedBatch.id}_`)) {
-              updatedSelectedImages.delete(imageKey);
-            }
+      for (const [imageKey, image] of state.selectedImages) {
+        if (!queueBatchIds.has(image.batchId)) {
+          if (newSelectedImages === state.selectedImages) {
+            newSelectedImages = new Map(state.selectedImages);
           }
-          newSelectedImages = updatedSelectedImages;
+          newSelectedImages.delete(imageKey);
         }
       }
 
-      // If not paused, update current batch and index to newest
-      if (!state.isStreamPaused) {
-        return {
-          ...state,
-          batchQueue: newQueue,
-          currentBatch: action.payload,
-          queueIndex: newQueue.length - 1,
-          selectedImages: newSelectedImages,
-        };
+      // If user was viewing the latest batch (or queue was empty), auto-advance
+      const wasOnLatest = state.batchQueue.length === 0 ||
+        state.queueIndex === state.batchQueue.length - 1;
+
+      let newIndex: number;
+      let newCurrentBatch: InspectionBatch;
+
+      if (wasOnLatest) {
+        newIndex = newQueue.length - 1;
+        newCurrentBatch = action.payload;
+      } else {
+        // User pinned to an older batch — try to keep them on it
+        const pinnedBatchId = state.currentBatch?.id;
+        const pinnedIdx = pinnedBatchId
+          ? newQueue.findIndex(b => b.id === pinnedBatchId)
+          : -1;
+
+        if (pinnedIdx >= 0) {
+          // Batch still in queue, stay on it (index may have shifted)
+          newIndex = pinnedIdx;
+          newCurrentBatch = newQueue[pinnedIdx];
+        } else {
+          // Batch was popped off — jump to latest
+          newIndex = newQueue.length - 1;
+          newCurrentBatch = action.payload;
+        }
       }
 
-      // If paused, just add to queue, don't change current view
       return {
         ...state,
         batchQueue: newQueue,
+        currentBatch: newCurrentBatch,
+        queueIndex: newIndex,
         selectedImages: newSelectedImages,
       };
     }
@@ -105,6 +131,36 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         queueIndex: action.payload,
         currentBatch: state.batchQueue[action.payload] || null,
       };
+
+    case 'TRIM_AND_RESUME': {
+      const trimmedQueue = [...state.batchQueue];
+
+      // Trim to user-configured limit, keeping newest batches
+      while (trimmedQueue.length > state.maxBatchQueue) {
+        trimmedQueue.shift();
+      }
+
+      // Reconcile: deselect images whose batch is no longer in the queue
+      const queueBatchIds = new Set(trimmedQueue.map(b => b.id));
+      let newSelectedImages = state.selectedImages;
+      for (const [imageKey, image] of state.selectedImages) {
+        if (!queueBatchIds.has(image.batchId)) {
+          if (newSelectedImages === state.selectedImages) {
+            newSelectedImages = new Map(state.selectedImages);
+          }
+          newSelectedImages.delete(imageKey);
+        }
+      }
+
+      const newestIndex = Math.max(trimmedQueue.length - 1, 0);
+      return {
+        ...state,
+        batchQueue: trimmedQueue,
+        currentBatch: trimmedQueue[newestIndex] || null,
+        queueIndex: newestIndex,
+        selectedImages: newSelectedImages,
+      };
+    }
 
     case 'TOGGLE_IMAGE_SELECTION': {
       const { batchId, boxNumber } = action.payload;
@@ -130,10 +186,21 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
     }
 
     case 'SET_REVIEW_MODAL_OPEN':
+      if (action.payload) {
+        // Opening review: auto-pause, remember if we were already paused
+        return {
+          ...state,
+          isReviewModalOpen: true,
+          reviewCarouselIndex: 0,
+          wasPausedBeforeReview: state.isStreamPaused,
+          isStreamPaused: true,
+        };
+      }
+      // Closing review: restore previous pause state
       return {
         ...state,
-        isReviewModalOpen: action.payload,
-        reviewCarouselIndex: action.payload ? 0 : state.reviewCarouselIndex,
+        isReviewModalOpen: false,
+        isStreamPaused: state.wasPausedBeforeReview ?? false,
       };
 
     case 'SET_REVIEW_CAROUSEL_INDEX':
@@ -206,6 +273,38 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         currentBatch: null,
         queueIndex: 0,
       };
+
+    case 'SET_MAX_BATCH_QUEUE': {
+      const newLimit = action.payload;
+      const trimmedQueue = [...state.batchQueue];
+
+      // Immediately trim queue to new limit (drop oldest)
+      while (trimmedQueue.length > newLimit) {
+        trimmedQueue.shift();
+      }
+
+      // Reconcile selections after trimming
+      const queueBatchIds = new Set(trimmedQueue.map(b => b.id));
+      let newSelectedImages = state.selectedImages;
+      for (const [imageKey, image] of state.selectedImages) {
+        if (!queueBatchIds.has(image.batchId)) {
+          if (newSelectedImages === state.selectedImages) {
+            newSelectedImages = new Map(state.selectedImages);
+          }
+          newSelectedImages.delete(imageKey);
+        }
+      }
+
+      const newIndex = Math.min(state.queueIndex, Math.max(trimmedQueue.length - 1, 0));
+      return {
+        ...state,
+        maxBatchQueue: newLimit,
+        batchQueue: trimmedQueue,
+        currentBatch: trimmedQueue[newIndex] || null,
+        queueIndex: newIndex,
+        selectedImages: newSelectedImages,
+      };
+    }
 
     // Annotation actions
     case 'SET_IMAGE_ANNOTATIONS': {
@@ -299,11 +398,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const togglePause = useCallback(() => {
+    const resuming = state.isStreamPaused;
     dispatch({ type: 'SET_PAUSED', payload: !state.isStreamPaused });
 
-    // When resuming, jump to newest batch
-    if (state.isStreamPaused && state.batchQueue.length > 0) {
-      dispatch({ type: 'SET_QUEUE_INDEX', payload: state.batchQueue.length - 1 });
+    // When resuming, trim queue back to limit and jump to newest
+    if (resuming && state.batchQueue.length > 0) {
+      dispatch({ type: 'TRIM_AND_RESUME' });
     }
   }, [state.isStreamPaused, state.batchQueue.length]);
 

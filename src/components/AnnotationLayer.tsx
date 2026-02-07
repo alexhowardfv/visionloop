@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { BoundingBox, ManualAnnotation } from '@/types';
+import { Tooltip } from './Tooltip';
 
 interface AnnotationLayerProps {
   imageDimensions: { width: number; height: number };
@@ -17,6 +18,7 @@ interface AnnotationLayerProps {
   onUpdateAnnotation: (annotationId: string, updates: Partial<ManualAnnotation>) => void;
   onDeleteAnnotation: (id: string) => void;
   onSelectAnnotation: (id: string | null) => void;
+  onNoTagSelected?: () => void;
 }
 
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
@@ -58,6 +60,7 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
   onUpdateAnnotation,
   onDeleteAnnotation,
   onSelectAnnotation,
+  onNoTagSelected,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drawingState, setDrawingState] = useState<DrawingState>({
@@ -182,9 +185,12 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
           startPoint: point,
           currentPoint: point,
         });
+      } else {
+        // No tag selected - notify parent
+        onNoTagSelected?.();
       }
     },
-    [isAnnotationMode, selectedTagForDrawing, selectedAnnotationId, manualAnnotations, screenToNormalized, onSelectAnnotation]
+    [isAnnotationMode, selectedTagForDrawing, selectedAnnotationId, manualAnnotations, screenToNormalized, onSelectAnnotation, onNoTagSelected]
   );
 
   // Handle mouse move - update drawing preview, resize, or drag
@@ -389,6 +395,13 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
     return null;
   }
 
+  // Shared label tab constants
+  const LABEL_HEIGHT = 20;
+  const LABEL_FONT_SIZE = 11;
+  const LABEL_CHAR_WIDTH = 7;
+  const LABEL_PADDING = 8;
+  const ACTION_BTN_SIZE = 18;
+
   // Render drawing preview
   const renderDrawingPreview = () => {
     if (!drawingState.isDrawing || !drawingState.startPoint || !drawingState.currentPoint || !selectedTagForDrawing) {
@@ -401,26 +414,24 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
     const width = Math.abs(currentPoint.x - startPoint.x) * imageDimensions.width;
     const height = Math.abs(currentPoint.y - startPoint.y) * imageDimensions.height;
     const color = tagColors[selectedTagForDrawing] || '#3b82f6';
-
-    const labelWidth = selectedTagForDrawing.length * 8 + 12;
-    const labelHeight = 20;
+    const labelWidth = selectedTagForDrawing.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2;
 
     return (
       <g>
-        {/* Preview label - above the box */}
+        {/* Preview label tab - above the box */}
         <rect
           x={x}
-          y={y - labelHeight}
+          y={y - LABEL_HEIGHT}
           width={labelWidth}
-          height={labelHeight}
+          height={LABEL_HEIGHT}
           fill={color}
           rx={2}
         />
         <text
-          x={x + 6}
-          y={y - labelHeight + 14}
+          x={x + LABEL_PADDING}
+          y={y - LABEL_HEIGHT + 14}
           fill="white"
-          fontSize={12}
+          fontSize={LABEL_FONT_SIZE}
           fontWeight="500"
           className="select-none"
         >
@@ -433,7 +444,7 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
           y={y}
           width={width}
           height={height}
-          fill={`${color}40`}
+          fill={`${color}30`}
           stroke={color}
           strokeWidth={2}
           strokeDasharray="6 3"
@@ -442,7 +453,7 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
     );
   };
 
-  // Render existing AI detections (styled similar to annotations)
+  // Render existing AI detections
   const renderDetections = () => {
     return existingDetections.map((box, index) => {
       const isNormalized = box.x <= 1 && box.y <= 1 && box.width <= 1 && box.height <= 1;
@@ -452,10 +463,13 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
       const height = isNormalized ? box.height * imageDimensions.height : box.height;
       const color = box.color || '#ef4444';
       const label = box.label || 'Detection';
+      const hasConfidence = box.confidence !== undefined;
+      const labelTextWidth = label.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2;
+      const labelWidth = labelTextWidth + (hasConfidence ? ACTION_BTN_SIZE : 0);
 
       return (
         <g key={`detection-${index}`} className="pointer-events-none">
-          {/* Main rectangle with fill */}
+          {/* Main rectangle */}
           <rect
             x={x}
             y={y}
@@ -466,50 +480,41 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
             strokeWidth={2}
           />
 
-          {/* Label background */}
+          {/* Label tab at top-left */}
           <rect
             x={x}
-            y={y}
-            width={Math.min(label.length * 7 + 16, width)}
-            height={18}
+            y={y - LABEL_HEIGHT}
+            width={Math.min(labelWidth, width)}
+            height={LABEL_HEIGHT}
             fill={color}
             rx={2}
           />
-
-          {/* Label text */}
           <text
-            x={x + 4}
-            y={y + 13}
+            x={x + LABEL_PADDING}
+            y={y - LABEL_HEIGHT + 14}
             fill="white"
-            fontSize={11}
+            fontSize={LABEL_FONT_SIZE}
             fontWeight="500"
             className="select-none"
           >
             {label}
           </text>
 
-          {/* Confidence badge if available */}
-          {box.confidence !== undefined && (
-            <>
-              <rect
-                x={x + width - 40}
-                y={y}
-                width={40}
-                height={18}
-                fill="rgba(0,0,0,0.6)"
-                rx={2}
-              />
-              <text
-                x={x + width - 36}
-                y={y + 13}
-                fill="white"
-                fontSize={10}
-                fontWeight="500"
-                className="select-none"
-              >
-                {(box.confidence * 100).toFixed(0)}%
-              </text>
-            </>
+          {/* Confidence "i" button inline in label tab */}
+          {hasConfidence && (
+            <foreignObject
+              x={x + labelTextWidth - 2}
+              y={y - LABEL_HEIGHT + 1}
+              width={ACTION_BTN_SIZE}
+              height={ACTION_BTN_SIZE}
+              className="pointer-events-auto overflow-visible"
+            >
+              <Tooltip content={`Confidence Score: ${(box.confidence! * 100).toFixed(1)}%`} position="top">
+                <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold text-white cursor-default select-none">
+                  i
+                </div>
+              </Tooltip>
+            </foreignObject>
           )}
         </g>
       );
@@ -526,73 +531,62 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
       const height = (p2.y - p1.y) * imageDimensions.height;
       const color = tagColors[annotation.title] || '#3b82f6';
       const isSelected = annotation.id === selectedAnnotationId;
-
-      // Delete button position (outside bottom right corner)
-      const deleteButtonX = x + width + 8;
-      const deleteButtonY = y + height + 8;
-
-      // Label dimensions
-      const labelWidth = annotation.title.length * 8 + 12;
-      const labelHeight = 20;
+      const showDelete = isAnnotationMode;
+      const labelTextWidth = annotation.title.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2;
+      const labelWidth = labelTextWidth + (showDelete ? ACTION_BTN_SIZE : 0);
 
       return (
         <g key={annotation.id} className={isAnnotationMode ? (isSelected ? 'cursor-move' : 'cursor-pointer') : 'pointer-events-none'}>
-          {/* Label background - above the box */}
+          {/* Main rectangle */}
           <rect
             x={x}
-            y={y - labelHeight}
-            width={labelWidth}
-            height={labelHeight}
+            y={y}
+            width={width}
+            height={height}
+            fill={isSelected ? `${color}50` : `${color}30`}
+            stroke={color}
+            strokeWidth={isSelected ? 3 : 2}
+          />
+
+          {/* Label tab at top-left (matches detection style) */}
+          <rect
+            x={x}
+            y={y - LABEL_HEIGHT}
+            width={Math.min(labelWidth, width)}
+            height={LABEL_HEIGHT}
             fill={color}
             rx={2}
           />
-
-          {/* Label text */}
           <text
-            x={x + 6}
-            y={y - labelHeight + 14}
+            x={x + LABEL_PADDING}
+            y={y - LABEL_HEIGHT + 14}
             fill="white"
-            fontSize={12}
+            fontSize={LABEL_FONT_SIZE}
             fontWeight="500"
             className="select-none"
           >
             {annotation.title}
           </text>
 
-          {/* Main rectangle with visible fill */}
-          <rect
-            x={x}
-            y={y}
-            width={width}
-            height={height}
-            fill={isSelected ? `${color}50` : `${color}35`}
-            stroke={color}
-            strokeWidth={isSelected ? 3 : 2}
-          />
-
-          {/* Delete button (X) outside at bottom right corner - always visible in annotation mode */}
-          {isAnnotationMode && (
+          {/* Delete "X" button inline in label tab */}
+          {showDelete && (
             <g
-              className="cursor-pointer"
+              className="cursor-pointer pointer-events-auto"
               onMouseDown={(e) => {
                 e.stopPropagation();
                 handleDeleteClick(e, annotation.id);
               }}
             >
-              {/* Delete button background */}
               <circle
-                cx={deleteButtonX}
-                cy={deleteButtonY}
-                r={10}
-                fill="#dc2626"
-                stroke="white"
-                strokeWidth={2}
+                cx={x + labelTextWidth - 2 + ACTION_BTN_SIZE / 2}
+                cy={y - LABEL_HEIGHT + LABEL_HEIGHT / 2}
+                r={7}
+                fill="rgba(220,38,38,0.8)"
               />
-              {/* X icon */}
               <path
-                d={`M ${deleteButtonX - 4} ${deleteButtonY - 4} L ${deleteButtonX + 4} ${deleteButtonY + 4} M ${deleteButtonX + 4} ${deleteButtonY - 4} L ${deleteButtonX - 4} ${deleteButtonY + 4}`}
+                d={`M ${x + labelTextWidth - 2 + ACTION_BTN_SIZE / 2 - 3} ${y - LABEL_HEIGHT + LABEL_HEIGHT / 2 - 3} L ${x + labelTextWidth - 2 + ACTION_BTN_SIZE / 2 + 3} ${y - LABEL_HEIGHT + LABEL_HEIGHT / 2 + 3} M ${x + labelTextWidth - 2 + ACTION_BTN_SIZE / 2 + 3} ${y - LABEL_HEIGHT + LABEL_HEIGHT / 2 - 3} L ${x + labelTextWidth - 2 + ACTION_BTN_SIZE / 2 - 3} ${y - LABEL_HEIGHT + LABEL_HEIGHT / 2 + 3}`}
                 stroke="white"
-                strokeWidth={2}
+                strokeWidth={1.5}
                 strokeLinecap="round"
               />
             </g>
@@ -601,46 +595,10 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
           {/* Resize handles (only when selected and in annotation mode) */}
           {isSelected && isAnnotationMode && (
             <>
-              {/* NW handle */}
-              <circle
-                cx={x}
-                cy={y}
-                r={7}
-                fill="white"
-                stroke={color}
-                strokeWidth={2}
-                className="cursor-nw-resize"
-              />
-              {/* NE handle */}
-              <circle
-                cx={x + width}
-                cy={y}
-                r={7}
-                fill="white"
-                stroke={color}
-                strokeWidth={2}
-                className="cursor-ne-resize"
-              />
-              {/* SW handle */}
-              <circle
-                cx={x}
-                cy={y + height}
-                r={7}
-                fill="white"
-                stroke={color}
-                strokeWidth={2}
-                className="cursor-sw-resize"
-              />
-              {/* SE handle */}
-              <circle
-                cx={x + width}
-                cy={y + height}
-                r={7}
-                fill="white"
-                stroke={color}
-                strokeWidth={2}
-                className="cursor-se-resize"
-              />
+              <circle cx={x} cy={y} r={4} fill="white" stroke={color} strokeWidth={1.5} className="cursor-nw-resize" />
+              <circle cx={x + width} cy={y} r={4} fill="white" stroke={color} strokeWidth={1.5} className="cursor-ne-resize" />
+              <circle cx={x} cy={y + height} r={4} fill="white" stroke={color} strokeWidth={1.5} className="cursor-sw-resize" />
+              <circle cx={x + width} cy={y + height} r={4} fill="white" stroke={color} strokeWidth={1.5} className="cursor-se-resize" />
             </>
           )}
         </g>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AppProvider, useAppContext } from '@/contexts/AppContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -13,13 +13,13 @@ import { BatchCarousel } from '@/components/BatchCarousel';
 import { Sidebar } from '@/components/Sidebar';
 import { Footer } from '@/components/Footer';
 import { ImageReviewModal } from '@/components/ImageReviewModal';
-import { Notification } from '@/components/Notification';
 import { SettingsModal } from '@/components/SettingsModal';
 import { DataInspector } from '@/components/DataInspector';
 import { DataAnalytics } from '@/components/DataAnalytics';
 import { LoginPinpad } from '@/components/LoginPinpad';
 import { CollectionManager } from '@/components/CollectionManager';
 import { SelectedImage, ManualAnnotation } from '@/types';
+import { FeatureVisibility } from '@/components/SettingsModal';
 import { clearAll, getTotalCount } from '@/lib/collectionStore';
 import { MAX_BATCH_QUEUE } from '@/lib/constants';
 
@@ -36,7 +36,7 @@ function VisionLoopApp() {
     deleteAnnotation,
   } = useAppContext();
   const { isAuthenticated, userId, login, logout } = useAuth();
-  const { notification, showNotification, hideNotification } = useNotification();
+  const { notification, showNotification } = useNotification();
   const [fps, setFps] = useState(0);
   const [lastBatchTime, setLastBatchTime] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -50,6 +50,21 @@ function VisionLoopApp() {
   const [socketHost, setSocketHost] = useState('');
   const [socketPort, setSocketPort] = useState('');
   const [maxBatchQueue, setMaxBatchQueue] = useState(MAX_BATCH_QUEUE);
+  const [annotationsEnabled, setAnnotationsEnabled] = useState(true);
+  const [featureVisibility, setFeatureVisibility] = useState<FeatureVisibility>({
+    annotationsEnabled: true,
+    analyticsVisible: true,
+    dataCollectionVisible: true,
+    dataInspectorVisible: true,
+  });
+  const [isMockDataActive, setIsMockDataActive] = useState(false);
+  const mockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Track pause state via ref for use in socket callback
+  const isPausedRef = useRef(state.isStreamPaused);
+  useEffect(() => {
+    isPausedRef.current = state.isStreamPaused;
+  }, [state.isStreamPaused]);
 
   // Load settings from localStorage after component mounts (client-side only)
   useEffect(() => {
@@ -66,20 +81,37 @@ function VisionLoopApp() {
     }
 
     if (savedMaxBatchQueue) {
-      setMaxBatchQueue(parseInt(savedMaxBatchQueue));
+      const parsed = parseInt(savedMaxBatchQueue);
+      setMaxBatchQueue(parsed);
+      dispatch({ type: 'SET_MAX_BATCH_QUEUE', payload: parsed });
+    }
+
+    const savedAnnotationsEnabled = localStorage.getItem('annotationsEnabled');
+    if (savedAnnotationsEnabled !== null) {
+      setAnnotationsEnabled(savedAnnotationsEnabled === 'true');
+    }
+
+    const savedVisibility = localStorage.getItem('featureVisibility');
+    if (savedVisibility) {
+      try {
+        setFeatureVisibility(JSON.parse(savedVisibility));
+      } catch (e) {
+        // ignore invalid JSON
+      }
     }
   }, []);
 
   // WebSocket connection - NO NOTIFICATIONS AT ALL
   const { isConnected } = useWebSocket({
     onMessage: (data) => {
-      // Capture raw data for inspection
-      const timestampedData = { ...data, _timestamp: Date.now() };
-      setCapturedData((prev) => [...prev, timestampedData]);
-      console.log('[Data Capture] Received:', timestampedData);
-
-      // Process data normally
+      // Process data through pipeline (AppContext handles pause logic)
       handleSocketData(data);
+
+      // Only accumulate raw captured data when NOT paused to avoid unnecessary re-renders
+      if (!isPausedRef.current) {
+        const timestampedData = { ...data, _timestamp: Date.now() };
+        setCapturedData((prev) => [...prev, timestampedData]);
+      }
     },
     onConnectionChange: (connected) => {
       dispatch({ type: 'SET_CONNECTED', payload: connected });
@@ -112,9 +144,13 @@ function VisionLoopApp() {
       const model = state.currentBatch?.model;
       const version = state.currentBatch?.version;
 
-      // Only fetch if we have actual batch data
+      // Only fetch if we have actual batch data (skip mock batches)
       if (!model || !version) {
         console.log('[App] No batch data yet, skipping tag fetch');
+        return;
+      }
+
+      if (model === 'MockModel') {
         return;
       }
 
@@ -461,8 +497,9 @@ function VisionLoopApp() {
   const handleMaxBatchQueueChange = useCallback((value: number) => {
     setMaxBatchQueue(value);
     localStorage.setItem('maxBatchQueue', value.toString());
+    dispatch({ type: 'SET_MAX_BATCH_QUEUE', payload: value });
     showNotification(`Batch queue size set to ${value}`, 'info');
-  }, [showNotification]);
+  }, [dispatch, showNotification]);
 
   // Memoized data stats for settings modal
   const dataStats = useMemo(() => ({
@@ -489,6 +526,79 @@ function VisionLoopApp() {
     setIsLoginOpen(false);
   }, []);
 
+  // Handle annotations enabled toggle
+  const handleAnnotationsEnabledChange = useCallback((enabled: boolean) => {
+    setAnnotationsEnabled(enabled);
+    localStorage.setItem('annotationsEnabled', enabled.toString());
+  }, []);
+
+  // Handle feature visibility change
+  const handleFeatureVisibilityChange = useCallback((visibility: FeatureVisibility) => {
+    setFeatureVisibility(visibility);
+    localStorage.setItem('featureVisibility', JSON.stringify(visibility));
+  }, []);
+
+  // Handle mock data toggle
+  const handleToggleMockData = useCallback((
+    enabled: boolean,
+    intervalMs: number,
+    cameraCount: number,
+    failRate: number
+  ) => {
+    // Clear existing interval
+    if (mockIntervalRef.current) {
+      clearInterval(mockIntervalRef.current);
+      mockIntervalRef.current = null;
+    }
+
+    setIsMockDataActive(enabled);
+
+    if (enabled) {
+      import('@/lib/mockDataGenerator').then(({ generateMockBatch, getMockTagsAndColors }) => {
+        // Load mock tags so sidebar tags and annotations work
+        const { tags, colors } = getMockTagsAndColors();
+        dispatch({ type: 'SET_AVAILABLE_TAGS', payload: tags });
+        dispatch({ type: 'SET_TAG_COLORS', payload: colors });
+
+        // Send first batch immediately
+        const batch = generateMockBatch({ cameraCount, failRate });
+        dispatch({ type: 'ADD_BATCH', payload: batch });
+
+        // Set up interval (re-dispatch tags each tick to survive state clears)
+        mockIntervalRef.current = setInterval(() => {
+          const { tags: t, colors: c } = getMockTagsAndColors();
+          dispatch({ type: 'SET_AVAILABLE_TAGS', payload: t });
+          dispatch({ type: 'SET_TAG_COLORS', payload: c });
+          const batch = generateMockBatch({ cameraCount, failRate });
+          dispatch({ type: 'ADD_BATCH', payload: batch });
+        }, intervalMs);
+      });
+    }
+  }, [dispatch]);
+
+  // Handle single mock batch
+  const handleSendSingleMockBatch = useCallback((cameraCount: number, failRate: number) => {
+    import('@/lib/mockDataGenerator').then(({ generateMockBatch, getMockTagsAndColors }) => {
+      // Ensure mock tags are loaded
+      const { tags, colors } = getMockTagsAndColors();
+      dispatch({ type: 'SET_AVAILABLE_TAGS', payload: tags });
+      dispatch({ type: 'SET_TAG_COLORS', payload: colors });
+
+      const batch = generateMockBatch({ cameraCount, failRate });
+      dispatch({ type: 'ADD_BATCH', payload: batch });
+      showNotification(`Mock batch sent with ${cameraCount} cameras`, 'info');
+    });
+  }, [dispatch, showNotification]);
+
+  // Clean up mock data interval on unmount
+  useEffect(() => {
+    return () => {
+      if (mockIntervalRef.current) {
+        clearInterval(mockIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleLoginSuccess = useCallback((token: string) => {
     // Get the userId from the API client (set during apiClient.login())
     const apiClient = getAPIClient();
@@ -505,27 +615,29 @@ function VisionLoopApp() {
     <div className="min-h-screen bg-primary">
       {/* Header */}
       <Header
-        isConnected={state.isConnected}
         isPaused={state.isStreamPaused}
         onTogglePause={togglePause}
-        overallStatus={state.currentBatch?.overallStatus || 'UNKNOWN'}
         onOpenSettings={handleOpenSettings}
-        onOpenDataInspector={handleOpenDataInspector}
-        onOpenAnalytics={handleOpenAnalytics}
-        onOpenCollections={handleOpenCollections}
+        onOpenDataInspector={featureVisibility.dataInspectorVisible ? handleOpenDataInspector : undefined}
+        onOpenAnalytics={featureVisibility.analyticsVisible ? handleOpenAnalytics : undefined}
+        onOpenCollections={featureVisibility.dataCollectionVisible ? handleOpenCollections : undefined}
         capturedDataCount={capturedData.length}
         collectionCount={getCollectionCount()}
         onOpenLogin={handleOpenLogin}
+        onLogout={logout}
+        notification={notification}
       />
 
       {/* Main Content Area */}
       <main className="pt-16 pb-12 pr-80">
-        {/* Batch Carousel (only visible when paused) */}
+        {/* Batch Queue Strip */}
         <BatchCarousel
           batchQueue={state.batchQueue}
           currentIndex={state.queueIndex}
           onNavigate={handleBatchNavigate}
-          isVisible={state.isStreamPaused}
+          selectedImages={state.selectedImages}
+          overallStatus={state.currentBatch?.overallStatus || 'UNKNOWN'}
+          maxQueueSize={maxBatchQueue}
         />
 
         {/* Image Grid */}
@@ -560,6 +672,7 @@ function VisionLoopApp() {
         onToggleMultiMode={handleToggleMultiMode}
         onOpenReview={handleOpenReview}
         onAddToProject={handleAddAllSelectedToProject}
+        onClearSelection={() => dispatch({ type: 'CLEAR_SELECTIONS' })}
       />
 
       {/* Footer */}
@@ -567,10 +680,9 @@ function VisionLoopApp() {
         lastUpdateTime={state.currentBatch?.timestamp || 0}
         queueLength={state.batchQueue.length}
         fps={fps}
-        socketHost={socketHost}
-        socketPort={socketPort}
         model={state.currentBatch?.model || 'No Data'}
         version={state.currentBatch?.version || 'No Data'}
+        isConnected={state.isConnected}
       />
 
       {/* Image Review Modal */}
@@ -591,14 +703,7 @@ function VisionLoopApp() {
         onAddAnnotation={addAnnotation}
         onUpdateAnnotation={updateAnnotation}
         onDeleteAnnotation={deleteAnnotation}
-      />
-
-      {/* Notification Toast */}
-      <Notification
-        message={notification.message}
-        type={notification.type}
-        isVisible={notification.isVisible}
-        onClose={hideNotification}
+        annotationsEnabled={annotationsEnabled}
       />
 
       {/* Settings Modal */}
@@ -612,6 +717,13 @@ function VisionLoopApp() {
         onMaxBatchQueueChange={handleMaxBatchQueueChange}
         onClearAllData={handleClearAllData}
         dataStats={dataStats}
+        annotationsEnabled={annotationsEnabled}
+        onAnnotationsEnabledChange={handleAnnotationsEnabledChange}
+        featureVisibility={featureVisibility}
+        onFeatureVisibilityChange={handleFeatureVisibilityChange}
+        isMockDataActive={isMockDataActive}
+        onToggleMockData={handleToggleMockData}
+        onSendSingleMockBatch={handleSendSingleMockBatch}
       />
 
       {/* Data Inspector Modal */}

@@ -2,7 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 
-type SettingsTab = 'connection' | 'display' | 'data';
+type SettingsTab = 'connection' | 'display' | 'data' | 'admin';
+
+export interface FeatureVisibility {
+  annotationsEnabled: boolean;
+  analyticsVisible: boolean;
+  dataCollectionVisible: boolean;
+  dataInspectorVisible: boolean;
+}
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -18,6 +25,13 @@ interface SettingsModalProps {
     collectionImages: number;
     batchQueueSize: number;
   };
+  annotationsEnabled: boolean;
+  onAnnotationsEnabledChange: (enabled: boolean) => void;
+  featureVisibility: FeatureVisibility;
+  onFeatureVisibilityChange: (visibility: FeatureVisibility) => void;
+  isMockDataActive?: boolean;
+  onToggleMockData?: (enabled: boolean, intervalMs: number, cameraCount: number, failRate: number) => void;
+  onSendSingleMockBatch?: (cameraCount: number, failRate: number) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,25 +44,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onMaxBatchQueueChange,
   onClearAllData,
   dataStats,
+  annotationsEnabled,
+  onAnnotationsEnabledChange,
+  featureVisibility,
+  onFeatureVisibilityChange,
+  isMockDataActive = false,
+  onToggleMockData,
+  onSendSingleMockBatch,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('connection');
   const [host, setHost] = useState(currentHost);
   const [port, setPort] = useState(currentPort);
   const [batchQueueSize, setBatchQueueSize] = useState(maxBatchQueue);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [localAnnotationsEnabled, setLocalAnnotationsEnabled] = useState(annotationsEnabled);
+  const [localVisibility, setLocalVisibility] = useState<FeatureVisibility>(featureVisibility);
+  const [mockInterval, setMockInterval] = useState(2000);
+  const [mockCameraCount, setMockCameraCount] = useState(8);
+  const [mockFailRate, setMockFailRate] = useState(30);
 
   // Sync state when props change
   useEffect(() => {
     setHost(currentHost);
     setPort(currentPort);
     setBatchQueueSize(maxBatchQueue);
-  }, [currentHost, currentPort, maxBatchQueue]);
+    setLocalAnnotationsEnabled(annotationsEnabled);
+    setLocalVisibility(featureVisibility);
+  }, [currentHost, currentPort, maxBatchQueue, annotationsEnabled, featureVisibility]);
 
   const handleSave = () => {
     onSave(host, port);
     if (batchQueueSize !== maxBatchQueue) {
       onMaxBatchQueueChange(batchQueueSize);
     }
+    if (localAnnotationsEnabled !== annotationsEnabled) {
+      onAnnotationsEnabledChange(localAnnotationsEnabled);
+    }
+    onFeatureVisibilityChange(localVisibility);
     onClose();
   };
 
@@ -56,6 +88,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setHost('localhost');
     setPort('5000');
     setBatchQueueSize(5);
+    setLocalAnnotationsEnabled(true);
+    setLocalVisibility({
+      annotationsEnabled: true,
+      analyticsVisible: true,
+      dataCollectionVisible: true,
+      dataInspectorVisible: true,
+    });
   };
 
   const handleClearAllData = () => {
@@ -95,17 +134,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </svg>
       ),
     },
+    {
+      id: 'admin',
+      label: 'Admin',
+      icon: (
+        <svg className="w-4 h-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+          <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+        </svg>
+      ),
+    },
   ];
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-2xl bg-primary rounded-xl shadow-elevated overflow-hidden">
+      <div className="relative w-full max-w-xl max-h-[90vh] bg-primary rounded-xl shadow-elevated overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-primary-lighter">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-primary-lighter">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
               <svg
-                className="w-6 h-6 text-white"
+                className="w-5 h-5 text-white"
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -117,7 +165,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
             </div>
-            <h2 className="text-white text-xl font-semibold">Settings</h2>
+            <h2 className="text-white text-lg font-semibold">Settings</h2>
           </div>
           <button
             onClick={onClose}
@@ -156,15 +204,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-6 min-h-[400px]">
+        <div className="p-5 flex-1 overflow-y-auto">
           {/* Connection Tab */}
           {activeTab === 'connection' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Info Banner */}
-              <div className="bg-blue-600/20 border border-blue-500/50 rounded-lg p-4">
-                <div className="flex items-start gap-3">
+              <div className="bg-blue-600/20 border border-blue-500/50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
                   <svg
-                    className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0"
+                    className="w-4 h-4 text-blue-400 flex-shrink-0"
                     fill="none"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -174,13 +222,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                   </svg>
-                  <div>
-                    <p className="text-blue-200 text-sm font-medium">Socket.io Configuration</p>
-                    <p className="text-blue-300/80 text-xs mt-1">
-                      Configure the WebSocket server connection. Changes take effect immediately after
-                      saving. The page will reload to apply new settings.
-                    </p>
-                  </div>
+                  <p className="text-blue-300/80 text-xs">
+                    Configure the WebSocket server connection. Changes take effect after saving.
+                  </p>
                 </div>
               </div>
 
@@ -195,7 +239,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   placeholder="e.g., localhost or 192.168.100.95"
-                  className="w-full px-4 py-3 bg-primary-lighter border border-border rounded-lg text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2.5 bg-primary-lighter border border-border rounded-lg text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-text-muted text-xs">
                   Enter the IP address or hostname of your Socket.io server
@@ -213,7 +257,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   placeholder="e.g., 5000"
-                  className="w-full px-4 py-3 bg-primary-lighter border border-border rounded-lg text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2.5 bg-primary-lighter border border-border rounded-lg text-white placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 />
                 <p className="text-text-muted text-xs">Default port is 5000</p>
               </div>
@@ -255,12 +299,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Display Tab */}
           {activeTab === 'display' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Info Banner */}
-              <div className="bg-purple-600/20 border border-purple-500/50 rounded-lg p-4">
-                <div className="flex items-start gap-3">
+              <div className="bg-purple-600/20 border border-purple-500/50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
                   <svg
-                    className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0"
+                    className="w-4 h-4 text-purple-400 flex-shrink-0"
                     fill="none"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -270,12 +314,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                   </svg>
-                  <div>
-                    <p className="text-purple-200 text-sm font-medium">Display Settings</p>
-                    <p className="text-purple-300/80 text-xs mt-1">
-                      Configure how the application displays data and manages memory.
-                    </p>
-                  </div>
+                  <p className="text-purple-300/80 text-xs">
+                    Configure how the application displays data and manages memory.
+                  </p>
                 </div>
               </div>
 
@@ -284,12 +325,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="block text-text-secondary text-sm font-medium">
                   Batch Queue Size
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {[5, 10, 20].map((size) => (
                     <button
                       key={size}
                       onClick={() => setBatchQueueSize(size)}
-                      className={`px-4 py-3 border rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 py-2.5 border rounded-lg text-sm font-medium transition-all ${
                         batchQueueSize === size
                           ? 'bg-purple-600 border-purple-500 text-white'
                           : 'bg-primary-lighter hover:bg-primary-lighter/70 border-border text-text-secondary'
@@ -316,17 +357,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               )}
+
             </div>
           )}
 
           {/* Data Tab */}
           {activeTab === 'data' && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Info Banner */}
-              <div className="bg-amber-600/20 border border-amber-500/50 rounded-lg p-4">
-                <div className="flex items-start gap-3">
+              <div className="bg-amber-600/20 border border-amber-500/50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
                   <svg
-                    className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0"
+                    className="w-4 h-4 text-amber-400 flex-shrink-0"
                     fill="none"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -336,45 +378,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                   </svg>
-                  <div>
-                    <p className="text-amber-200 text-sm font-medium">Data Management</p>
-                    <p className="text-amber-300/80 text-xs mt-1">
-                      Manage captured data, collection storage, and memory usage.
-                    </p>
-                  </div>
+                  <p className="text-amber-300/80 text-xs">
+                    Manage captured data, collection storage, and memory usage.
+                  </p>
                 </div>
               </div>
 
               {/* Data Statistics */}
               {dataStats && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-primary-lighter rounded-lg p-4 border border-border">
-                    <p className="text-text-muted text-xs mb-1">Captured Messages</p>
-                    <p className="text-2xl font-bold text-blue-400">{dataStats.capturedMessages.toLocaleString()}</p>
+                <div className="bg-primary-lighter rounded-lg border border-border divide-y divide-border">
+                  <div className="flex items-center justify-between px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                      <span className="text-text-secondary text-sm">Captured Messages</span>
+                    </div>
+                    <span className="text-white text-sm font-medium">{dataStats.capturedMessages.toLocaleString()}</span>
                   </div>
-                  <div className="bg-primary-lighter rounded-lg p-4 border border-border">
-                    <p className="text-text-muted text-xs mb-1">Collection Images</p>
-                    <p className="text-2xl font-bold text-green-400">{dataStats.collectionImages.toLocaleString()}</p>
+                  <div className="flex items-center justify-between px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                      <span className="text-text-secondary text-sm">Collection Images</span>
+                    </div>
+                    <span className="text-white text-sm font-medium">{dataStats.collectionImages.toLocaleString()}</span>
                   </div>
-                  <div className="bg-primary-lighter rounded-lg p-4 border border-border">
-                    <p className="text-text-muted text-xs mb-1">Batch Queue</p>
-                    <p className="text-2xl font-bold text-purple-400">{dataStats.batchQueueSize}</p>
+                  <div className="px-4 py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                        <span className="text-text-secondary text-sm">Batch Queue</span>
+                      </div>
+                      <span className="text-white text-sm font-medium">{dataStats.batchQueueSize} / {batchQueueSize}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-primary rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          dataStats.batchQueueSize / batchQueueSize > 0.8 ? 'bg-amber-500' : 'bg-purple-500'
+                        }`}
+                        style={{ width: `${Math.min((dataStats.batchQueueSize / batchQueueSize) * 100, 100)}%` }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* Clear All Data Section */}
-              <div className="bg-red-600/10 border border-red-500/30 rounded-lg p-5">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-red-600/20 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-6 h-6 text-red-500" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="bg-red-600/10 border border-red-500/30 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-red-500" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
                       <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-red-400 font-semibold mb-1">Clear All Data</h3>
-                    <p className="text-text-muted text-sm mb-4">
-                      Permanently delete all captured WebSocket messages, collection images, batch queue, and selections. This action cannot be undone.
+                    <h3 className="text-red-400 font-semibold text-sm mb-1">Clear All Data</h3>
+                    <p className="text-text-muted text-xs mb-3">
+                      Permanently delete all captured data, collections, and batch queue. This cannot be undone.
                     </p>
                     <button
                       onClick={() => setShowClearConfirm(true)}
@@ -391,10 +449,282 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Admin Tab */}
+          {activeTab === 'admin' && (
+            <div className="space-y-4">
+              {/* Info Banner */}
+              <div className="bg-indigo-600/20 border border-indigo-500/50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <svg
+                    className="w-4 h-4 text-indigo-400 flex-shrink-0"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                  </svg>
+                  <p className="text-indigo-300/80 text-xs">
+                    Control feature visibility and manage mock data generation.
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature Visibility Section */}
+              <div className="space-y-2">
+                <h3 className="text-white text-sm font-semibold">Feature Visibility</h3>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Annotations Toggle */}
+                  <div className="bg-primary-lighter/50 rounded-lg p-3 border border-border">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-text-secondary text-sm font-medium">Annotations</span>
+                      <div className="relative ml-3">
+                        <input
+                          type="checkbox"
+                          checked={localAnnotationsEnabled}
+                          onChange={(e) => setLocalAnnotationsEnabled(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-10 h-5 rounded-full transition-colors ${
+                            localAnnotationsEnabled ? 'bg-blue-600' : 'bg-gray-600'
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                              localAnnotationsEnabled ? 'transform translate-x-5' : ''
+                            }`}
+                          ></div>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Analytics Toggle */}
+                  <div className="bg-primary-lighter/50 rounded-lg p-3 border border-border">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-text-secondary text-sm font-medium">Analytics</span>
+                      <div className="relative ml-3">
+                        <input
+                          type="checkbox"
+                          checked={localVisibility.analyticsVisible}
+                          onChange={(e) => setLocalVisibility(v => ({ ...v, analyticsVisible: e.target.checked }))}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-10 h-5 rounded-full transition-colors ${
+                            localVisibility.analyticsVisible ? 'bg-purple-600' : 'bg-gray-600'
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                              localVisibility.analyticsVisible ? 'transform translate-x-5' : ''
+                            }`}
+                          ></div>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Data Collection Toggle */}
+                  <div className="bg-primary-lighter/50 rounded-lg p-3 border border-border">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-text-secondary text-sm font-medium">Data Collection</span>
+                      <div className="relative ml-3">
+                        <input
+                          type="checkbox"
+                          checked={localVisibility.dataCollectionVisible}
+                          onChange={(e) => setLocalVisibility(v => ({ ...v, dataCollectionVisible: e.target.checked }))}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-10 h-5 rounded-full transition-colors ${
+                            localVisibility.dataCollectionVisible ? 'bg-cyan-600' : 'bg-gray-600'
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                              localVisibility.dataCollectionVisible ? 'transform translate-x-5' : ''
+                            }`}
+                          ></div>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Data Inspector Toggle */}
+                  <div className="bg-primary-lighter/50 rounded-lg p-3 border border-border">
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <span className="text-text-secondary text-sm font-medium">Data Inspector</span>
+                      <div className="relative ml-3">
+                        <input
+                          type="checkbox"
+                          checked={localVisibility.dataInspectorVisible}
+                          onChange={(e) => setLocalVisibility(v => ({ ...v, dataInspectorVisible: e.target.checked }))}
+                          className="sr-only"
+                        />
+                        <div
+                          className={`w-10 h-5 rounded-full transition-colors ${
+                            localVisibility.dataInspectorVisible ? 'bg-green-600' : 'bg-gray-600'
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                              localVisibility.dataInspectorVisible ? 'transform translate-x-5' : ''
+                            }`}
+                          ></div>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-border"></div>
+
+              {/* Mock Data Generator Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white text-sm font-semibold">Mock Data Generator</h3>
+                  {isMockDataActive && (
+                    <div className="flex items-center gap-2 px-2 py-1 bg-green-600/10 border border-green-600/30 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-green-400 text-xs font-medium">Active</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sliders in a compact grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Interval */}
+                  <div className="space-y-1">
+                    <label className="block text-text-secondary text-xs font-medium">
+                      Interval: {(mockInterval / 1000).toFixed(1)}s
+                    </label>
+                    <input
+                      type="range"
+                      min="500"
+                      max="5000"
+                      step="250"
+                      value={mockInterval}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setMockInterval(val);
+                        if (isMockDataActive) onToggleMockData?.(true, val, mockCameraCount, mockFailRate / 100);
+                      }}
+                      className="w-full h-2 bg-primary-lighter rounded-lg appearance-none cursor-pointer accent-green-500"
+                    />
+                    <div className="flex justify-between text-text-muted text-[10px]">
+                      <span>0.5s</span>
+                      <span>5.0s</span>
+                    </div>
+                  </div>
+
+                  {/* Camera Count */}
+                  <div className="space-y-1">
+                    <label className="block text-text-secondary text-xs font-medium">
+                      Cameras: {mockCameraCount}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="34"
+                      step="1"
+                      value={mockCameraCount}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setMockCameraCount(val);
+                        if (isMockDataActive) onToggleMockData?.(true, mockInterval, val, mockFailRate / 100);
+                      }}
+                      className="w-full h-2 bg-primary-lighter rounded-lg appearance-none cursor-pointer accent-green-500"
+                    />
+                    <div className="flex justify-between text-text-muted text-[10px]">
+                      <span>1</span>
+                      <span>34</span>
+                    </div>
+                  </div>
+
+                  {/* Fail Rate */}
+                  <div className="space-y-1">
+                    <label className="block text-text-secondary text-xs font-medium">
+                      Fail Rate: {mockFailRate}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={mockFailRate}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setMockFailRate(val);
+                        if (isMockDataActive) onToggleMockData?.(true, mockInterval, mockCameraCount, val / 100);
+                      }}
+                      className="w-full h-2 bg-primary-lighter rounded-lg appearance-none cursor-pointer accent-green-500"
+                    />
+                    <div className="flex justify-between text-text-muted text-[10px]">
+                      <span>0%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const newEnabled = !isMockDataActive;
+                      onToggleMockData?.(newEnabled, mockInterval, mockCameraCount, mockFailRate / 100);
+                      if (newEnabled) onClose();
+                    }}
+                    className={`flex-1 px-3 py-2.5 rounded-lg text-white text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                      isMockDataActive
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                  >
+                    {isMockDataActive ? (
+                      <>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                        </svg>
+                        Stop
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Start Interval
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      onSendSingleMockBatch?.(mockCameraCount, mockFailRate / 100);
+                      onClose();
+                    }}
+                    className="flex-1 px-3 py-2.5 bg-transparent hover:bg-green-600/20 border border-green-600 rounded-lg text-green-400 text-sm font-medium transition-all flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Send Single
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}
-        <div className="border-t border-border px-6 py-4 bg-primary-lighter flex items-center justify-between">
+        <div className="border-t border-border px-5 py-3 bg-primary-lighter flex items-center justify-between">
           <button
             onClick={handleReset}
             className="px-4 py-2 bg-primary-lighter hover:bg-primary-lighter/70 border border-border rounded-lg text-text-secondary transition-all"

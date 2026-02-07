@@ -47,6 +47,19 @@ export const LoginPinpad: React.FC<LoginPinpadProps> = ({
     try {
       console.log('[Login] Authenticating with PIN:', pin);
 
+      // Dev bypass: PIN '00000' skips the API call and logs in with a mock token
+      if (process.env.NODE_ENV === 'development' && pin === '00000') {
+        console.log('[Login] Dev bypass — using mock token');
+        const mockToken = 'dev_mock_token_' + Date.now();
+        const apiClient = getAPIClient();
+        apiClient.setAuthToken(mockToken);
+        apiClient.setCloudToken(mockToken);
+        apiClient.setUserId('dev-user');
+        onLoginSuccess(mockToken);
+        handleClose();
+        return;
+      }
+
       // Use the API client's login method which handles user_id parsing
       const apiClient = getAPIClient();
       const { token } = await apiClient.login(pin, 'Administrator');

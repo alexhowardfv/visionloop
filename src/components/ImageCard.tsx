@@ -84,11 +84,9 @@ export const ImageCard: React.FC<ImageCardProps> = ({ roi, isSelected, onToggleS
           <span className="text-text-secondary text-xs font-medium">{roi.cameraId}</span>
           <span className="text-text-muted text-xs">Box {roi.boxNumber}</span>
         </div>
-        {roi.reason && roi.result !== 'PASS' && (
-          <p className="text-text-muted text-xs mt-1 truncate" title={roi.reason}>
-            {roi.reason}
-          </p>
-        )}
+        <p className="text-text-muted text-xs mt-1 truncate" title={roi.reason || 'No detections'}>
+          {roi.result === 'PASS' ? 'No detections' : roi.reason}
+        </p>
       </div>
     </div>
   );

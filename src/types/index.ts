@@ -58,14 +58,15 @@ export interface AppState {
 
   // Batch management
   currentBatch: InspectionBatch | null;
-  batchQueue: InspectionBatch[]; // Max 5 batches (FIFO)
-  queueIndex: number; // Current position in carousel (0-4)
+  batchQueue: InspectionBatch[]; // FIFO, limited by maxBatchQueue
+  queueIndex: number; // Current position in carousel
 
   // Selection state
   selectedImages: Map<string, SelectedImage>; // Key: `${batchId}_${boxNumber}`
 
   // Review modal
   isReviewModalOpen: boolean;
+  wasPausedBeforeReview: boolean;
   reviewCarouselIndex: number;
 
   // Tags
@@ -78,6 +79,7 @@ export interface AppState {
   imageAnnotations: Map<string, ManualAnnotation[]>; // Key: `${batchId}_${boxNumber}`
 
   // Config
+  maxBatchQueue: number; // User-configurable queue limit (5, 10, or 20)
   modelInfo: {
     name: string;
     version: string;
@@ -147,10 +149,8 @@ export interface SocketInspectionData {
 // Component Props Types
 
 export interface HeaderProps {
-  isConnected: boolean;
   isPaused: boolean;
   onTogglePause: () => void;
-  overallStatus: 'PASS' | 'FAIL' | 'UNKNOWN';
 }
 
 export interface ImageCardProps {
@@ -170,7 +170,9 @@ export interface BatchCarouselProps {
   batchQueue: InspectionBatch[];
   currentIndex: number;
   onNavigate: (index: number) => void;
-  isVisible: boolean;
+  selectedImages?: Map<string, SelectedImage>;
+  overallStatus?: 'PASS' | 'FAIL' | 'UNKNOWN';
+  maxQueueSize?: number;
 }
 
 export interface SidebarProps {
@@ -183,6 +185,7 @@ export interface SidebarProps {
   onToggleMultiMode: (enabled: boolean) => void;
   onOpenReview: () => void;
   onAddToProject: () => void;
+  onClearSelection: () => void;
 }
 
 export interface ImageReviewModalProps {
@@ -203,6 +206,7 @@ export interface ImageReviewModalProps {
   onAddAnnotation: (imageKey: string, annotation: ManualAnnotation) => void;
   onUpdateAnnotation: (imageKey: string, annotationId: string, updates: Partial<ManualAnnotation>) => void;
   onDeleteAnnotation: (imageKey: string, annotationId: string) => void;
+  annotationsEnabled?: boolean;
 }
 
 export interface NotificationProps {
@@ -216,8 +220,7 @@ export interface FooterProps {
   lastUpdateTime: number;
   queueLength: number;
   fps: number;
-  socketHost: string;
-  socketPort: string;
   model: string;
   version: string;
+  isConnected: boolean;
 }

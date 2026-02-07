@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { HeaderProps } from '@/types';
 import { Tooltip } from './Tooltip';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,13 +14,17 @@ interface ExtendedHeaderProps extends HeaderProps {
   capturedDataCount?: number;
   collectionCount?: number;
   onOpenLogin?: () => void;
+  onLogout?: () => void;
+  notification?: {
+    message: string;
+    type: 'success' | 'error' | 'info';
+    isVisible: boolean;
+  };
 }
 
 export const Header: React.FC<ExtendedHeaderProps> = ({
-  isConnected,
   isPaused,
   onTogglePause,
-  overallStatus,
   onOpenSettings,
   onOpenDataInspector,
   onOpenAnalytics,
@@ -27,80 +32,97 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
   capturedDataCount = 0,
   collectionCount = 0,
   onOpenLogin,
+  onLogout,
+  notification,
 }) => {
-  const { isAuthenticated } = useAuth();
-
-  const getStatusColor = () => {
-    switch (overallStatus) {
-      case 'PASS':
-        return 'bg-status-pass';
-      case 'FAIL':
-        return 'bg-status-fail';
-      default:
-        return 'bg-status-unknown';
-    }
-  };
+  const { isAuthenticated, isHydrated } = useAuth();
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-primary/80 backdrop-blur-glass border-b border-border z-50">
-      <div className="h-full px-6 flex items-center justify-between">
-        {/* Logo */}
+    <header className={`fixed top-0 left-0 right-0 h-16 backdrop-blur-glass border-b z-50 transition-colors ${
+      isPaused ? 'bg-yellow-900/30 border-yellow-600/40' : 'bg-primary/80 border-border'
+    }`}>
+      <div className="h-full px-6 grid grid-cols-[1fr_auto_1fr] items-center">
+        {/* Left: Logo */}
         <div className="flex items-center gap-3">
+          <Image src="/logo.png" alt="Logo" width={64} height={64} className="rounded" />
           <div>
             <h1 className="text-white font-semibold text-lg">Flexible Vision Loop</h1>
-            <p className="text-text-muted text-xs">Real-time Inspection</p>
+            <p className="text-text-muted text-xs">Real-time Inspection Feedback</p>
           </div>
         </div>
 
-        {/* Center Status */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${getStatusColor()}`}></div>
-            <span className="text-white text-sm font-medium">{overallStatus}</span>
-          </div>
-
-          <div className="h-6 w-px bg-border"></div>
-
-          <div className="flex items-center gap-2">
-            <div
-              className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-            ></div>
-            <span className="text-text-secondary text-sm">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-        </div>
-
-        {/* Right Side Actions */}
+        {/* Center: Pause/Resume */}
         <div className="flex items-center gap-3">
-          {/* Login/Auth Status */}
-          {onOpenLogin && (
-            <button
-              onClick={onOpenLogin}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all ${
-                isAuthenticated
-                  ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-              title={isAuthenticated ? 'Authenticated' : 'Login'}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                {isAuthenticated ? (
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-                ) : (
-                  <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                )}
+          <button
+            onClick={onTogglePause}
+            className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+              isPaused
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-red-600/80 hover:bg-red-700 text-white'
+            }`}
+          >
+            {isPaused ? (
+              <>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Resume Queue
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                </svg>
+                Pause Queue
+              </>
+            )}
+          </button>
+          {isPaused && (
+            <span className="flex items-center gap-1.5 text-yellow-400 text-sm font-medium animate-[pulse_3s_ease-in-out_infinite]">
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
               </svg>
-              <span>{isAuthenticated ? 'Authenticated' : 'Login'}</span>
-            </button>
+              PAUSED
+            </span>
+          )}
+        </div>
+
+        {/* Right: Notification + Action buttons + Auth */}
+        <div className="flex items-center gap-3 justify-end">
+          {/* Inline Notification */}
+          {notification?.isVisible && (
+            <div
+              className={`flex-1 flex items-center justify-center transition-opacity duration-300 ${
+                notification.isVisible ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                  notification.type === 'success'
+                    ? 'bg-green-600/20 text-green-400 border border-green-500/30'
+                    : notification.type === 'error'
+                    ? 'bg-red-600/20 text-red-400 border border-red-500/30'
+                    : 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                }`}
+              >
+                {notification.type === 'success' && (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                {notification.type === 'error' && (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                {notification.type === 'info' && (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {notification.message}
+              </span>
+            </div>
           )}
 
           {/* Collections Button */}
@@ -130,7 +152,7 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
             </Tooltip>
           )}
 
-          {/* Analytics Button - always show so user can import data */}
+          {/* Analytics Button */}
           {onOpenAnalytics && (
             <Tooltip content="Data Analytics" position="bottom">
               <button
@@ -162,7 +184,7 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
             <Tooltip content="Data Inspector" position="bottom">
               <button
                 onClick={onOpenDataInspector}
-                className="relative p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
+                className="relative p-2 rounded-lg bg-green-600/20 hover:bg-green-600/30 text-green-400 hover:text-green-300 transition-all"
               >
                 <svg
                   className="w-5 h-5"
@@ -186,7 +208,7 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
 
           {/* Settings Button */}
           {onOpenSettings && (
-            <Tooltip content="Connection Settings" position="bottom">
+            <Tooltip content="Settings" position="bottom">
               <button
                 onClick={onOpenSettings}
                 className="p-2 rounded-lg bg-primary-lighter hover:bg-primary-lighter/70 text-text-secondary hover:text-white transition-all"
@@ -207,39 +229,50 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
             </Tooltip>
           )}
 
-          {/* Pause/Resume Button */}
-          <button
-            onClick={onTogglePause}
-            className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-              isPaused
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-red-600 hover:bg-red-700 text-white'
-            }`}
-          >
-            {isPaused ? (
-              <>
+          {/* Login/Logout Button */}
+          {isHydrated && (isAuthenticated ? (
+            onLogout && (
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all bg-red-600/20 text-red-400 hover:bg-red-600/30"
+              >
                 <svg
                   className="w-4 h-4"
-                  fill="currentColor"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
                   viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  <path d="M8 5v14l11-7z" />
+                  <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
                 </svg>
-                RESUME
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
+                <span>Logout</span>
+              </button>
+            )
+          ) : (
+            onOpenLogin && (
+              <Tooltip content="Login to Cloud" position="bottom">
+                <button
+                  onClick={onOpenLogin}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                </svg>
-                PAUSE
-              </>
-            )}
-          </button>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                  </svg>
+                  <span>Login</span>
+                </button>
+              </Tooltip>
+            )
+          ))}
         </div>
       </div>
     </header>
