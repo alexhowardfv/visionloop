@@ -781,8 +781,8 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
       const isSelected = annotation.id === selectedAnnotationId;
       const showDelete = true;
       const isConverted = annotation.convertedFromDetectionIndex !== undefined && !!onUndoConversion;
-      const PEN_ICON_WIDTH = 12;
-      const labelTextWidth = annotation.title.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2 + PEN_ICON_WIDTH;
+      const ICON_WIDTH = isConverted ? 19 : 12; // AI badge is wider than pencil icon
+      const labelTextWidth = annotation.title.length * LABEL_CHAR_WIDTH + LABEL_PADDING * 2 + ICON_WIDTH;
       const actionBtns = (showDelete ? 1 : 0) + (isConverted ? 1 : 0);
       const labelWidth = labelTextWidth + actionBtns * ACTION_BTN_SIZE;
       const undoBtnCx = x + labelTextWidth + ACTION_BTN_SIZE / 2;
@@ -848,12 +848,12 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
             onTouchStart={startDragTouch}
           />
 
-          {/* Label tab — outlined style for annotations (top-rounded); bottom-right rounded only when label overhangs box */}
+          {/* Label tab — outlined for manual, semi-solid for converted (top-rounded); bottom-right rounded only when label overhangs box */}
           <path
             d={labelWidth > width
               ? `M ${x} ${y} V ${y - LABEL_HEIGHT + ANNOTATION_LABEL_RADIUS} Q ${x} ${y - LABEL_HEIGHT} ${x + ANNOTATION_LABEL_RADIUS} ${y - LABEL_HEIGHT} H ${x + labelWidth - ANNOTATION_LABEL_RADIUS} Q ${x + labelWidth} ${y - LABEL_HEIGHT} ${x + labelWidth} ${y - LABEL_HEIGHT + ANNOTATION_LABEL_RADIUS} V ${y - ANNOTATION_LABEL_RADIUS} Q ${x + labelWidth} ${y} ${x + labelWidth - ANNOTATION_LABEL_RADIUS} ${y} Z`
               : `M ${x} ${y} V ${y - LABEL_HEIGHT + ANNOTATION_LABEL_RADIUS} Q ${x} ${y - LABEL_HEIGHT} ${x + ANNOTATION_LABEL_RADIUS} ${y - LABEL_HEIGHT} H ${x + labelWidth - ANNOTATION_LABEL_RADIUS} Q ${x + labelWidth} ${y - LABEL_HEIGHT} ${x + labelWidth} ${y - LABEL_HEIGHT + ANNOTATION_LABEL_RADIUS} V ${y} Z`}
-            fill={`${color}20`}
+            fill={isConverted ? `${color}50` : `${color}20`}
             stroke={color}
             strokeWidth={isSelected ? 3 : 2}
             className="pointer-events-auto cursor-grab"
@@ -861,18 +861,44 @@ export const AnnotationLayer: React.FC<AnnotationLayerProps> = ({
             onTouchStart={startDragTouch}
           />
 
-          {/* Pencil icon to indicate user-drawn */}
-          <path
-            d={`M ${x + 9} ${btnCy} L ${x + 13} ${btnCy - 4} L ${x + 15} ${btnCy - 2} L ${x + 11} ${btnCy + 2} Z M ${x + 9} ${btnCy} L ${x + 7} ${btnCy + 4} L ${x + 11} ${btnCy + 2}`}
-            fill="none"
-            stroke="white"
-            strokeWidth={1.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          {/* Type icon: AI badge for converted, pencil for user-drawn */}
+          {isConverted ? (
+            <g>
+              <rect
+                x={x + 6}
+                y={y - LABEL_HEIGHT + 6}
+                width={17}
+                height={LABEL_HEIGHT - 12}
+                rx={3}
+                fill="white"
+                opacity={0.85}
+              />
+              <text
+                x={x + 14.5}
+                y={y - LABEL_HEIGHT + LABEL_CENTER}
+                fill={color}
+                fontSize={Math.max(8, LABEL_FONT_SIZE - 3)}
+                fontWeight="700"
+                textAnchor="middle"
+                dominantBaseline="central"
+                className="select-none"
+              >
+                AI
+              </text>
+            </g>
+          ) : (
+            <path
+              d={`M ${x + 9} ${btnCy} L ${x + 13} ${btnCy - 4} L ${x + 15} ${btnCy - 2} L ${x + 11} ${btnCy + 2} Z M ${x + 9} ${btnCy} L ${x + 7} ${btnCy + 4} L ${x + 11} ${btnCy + 2}`}
+              fill="none"
+              stroke="white"
+              strokeWidth={1.2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
 
           <text
-            x={x + LABEL_PADDING + 12}
+            x={x + LABEL_PADDING + ICON_WIDTH}
             y={y - LABEL_HEIGHT + LABEL_CENTER}
             fill="white"
             fontSize={LABEL_FONT_SIZE}

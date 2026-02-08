@@ -258,17 +258,29 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     });
   }, []);
 
-  // Handle tag click - different behavior in annotation mode vs normal mode
-  const handleTagClick = (tag: string) => {
-    if (isAnnotationMode) {
-      // In annotation mode, select tag for drawing (single select)
-      setSelectedTagForDrawing((prev) => (prev === tag ? null : tag));
+  // Handle drawing label click — single-select for annotation tool
+  const handleDrawingLabelClick = (tag: string) => {
+    if (selectedAnnotationId) {
+      // Reassign selected annotation to this tag
+      const annotation = currentAnnotations.find((a) => a.id === selectedAnnotationId);
+      if (annotation && annotation.title !== tag) {
+        onUpdateAnnotation(imageKey, selectedAnnotationId, {
+          title: tag,
+          flag: tagColors[tag] || '#3b82f6',
+        });
+        // Ensure the new tag is in upload tags
+        setLocalTags((prev) => prev.includes(tag) ? prev : [...prev, tag]);
+      }
     } else {
-      // Normal mode - toggle tag for upload
-      setLocalTags((prev) =>
-        prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-      );
+      setSelectedTagForDrawing((prev) => (prev === tag ? null : tag));
     }
+  };
+
+  // Handle upload tag click — multi-select for upload
+  const handleUploadTagClick = (tag: string) => {
+    setLocalTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
   };
 
   // Annotation handlers
@@ -481,11 +493,18 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     });
   };
 
-  // Show no-tag warning with auto-dismiss
+  // Flash state for drawing label section
+  const [drawingLabelFlash, setDrawingLabelFlash] = useState(false);
+
+  // Show no-tag warning with auto-dismiss + visual flash on the drawing label section
   const triggerNoTagWarning = useCallback(() => {
     if (noTagWarningTimer.current) clearTimeout(noTagWarningTimer.current);
     setShowNoTagWarning(true);
-    noTagWarningTimer.current = setTimeout(() => setShowNoTagWarning(false), 3000);
+    setDrawingLabelFlash(true);
+    noTagWarningTimer.current = setTimeout(() => {
+      setShowNoTagWarning(false);
+      setDrawingLabelFlash(false);
+    }, 3000);
   }, []);
 
   // Get cursor style
@@ -922,12 +941,14 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                       </div>
                     );
                   })}
-                  {currentDetectionActions.size > 0 && (
+                  {(currentDetectionActions.size > 0 || currentAnnotations.some(a => a.convertedFromDetectionIndex !== undefined)) && (
                     <button
                       onClick={handleResetAllDetectionActions}
                       className="w-full mt-2 py-1.5 rounded-lg border border-border/30 bg-transparent text-text-secondary hover:text-white hover:border-border/50 transition-colors text-xs"
                     >
-                      Reset All Actions
+                      {currentAnnotations.some(a => a.convertedFromDetectionIndex !== undefined)
+                        ? 'Reset All (reverts conversions)'
+                        : 'Reset All Actions'}
                     </button>
                   )}
                 </div>
@@ -1015,30 +1036,29 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
               )}
             </div>
 
-            {/* Label Selection Section */}
-            <div className="p-4">
-              <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-                {isAnnotationMode ? 'Select Label to Draw' : 'Label Selection'}
-              </h3>
-              <div className="space-y-2">
-                {tags.map((tag) => {
-                  const isSelectedForUpload = localTags.includes(tag);
-                  const isSelectedForDrawing = selectedTagForDrawing === tag;
-                  const hexColor = tagColors[tag] || '#666666';
+            {/* Drawing Label Section — always visible, interactive only in annotation mode */}
+            {annotationsEnabled && (
+              <div className={`border-b p-4 transition-all duration-500 ${!isAnnotationMode ? 'opacity-40 pointer-events-none border-border/30' : drawingLabelFlash ? 'border-amber-500 bg-amber-500/10' : 'border-border/30'}`}>
+                <h3 className="text-white font-semibold text-sm mb-2 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Drawing Label
+                </h3>
+                {selectedAnnotationId && isAnnotationMode && (
+                  <p className="text-xs text-blue-400 mb-2">Click a label to reassign selected annotation</p>
+                )}
+                <div className="space-y-1.5">
+                  {tags.map((tag) => {
+                    const isSelectedForDrawing = selectedTagForDrawing === tag;
+                    const hexColor = tagColors[tag] || '#666666';
+                    const tagAnnotationCount = currentAnnotations.filter((a) => a.title === tag).length;
 
-                  // Count annotations with this tag
-                  const tagAnnotationCount = currentAnnotations.filter((a) => a.title === tag).length;
-
-                  if (isAnnotationMode) {
-                    // Annotation mode - single select for drawing
                     return (
                       <button
                         key={tag}
-                        onClick={() => handleTagClick(tag)}
-                        className={`w-full px-3 py-2.5 rounded-lg font-medium text-sm text-left transition-all transform hover:scale-[1.02] ${
+                        onClick={() => handleDrawingLabelClick(tag)}
+                        className={`w-full px-3 py-2 rounded-lg font-medium text-sm text-left transition-all ${
                           isSelectedForDrawing
                             ? 'text-white shadow-lg border-2 border-white'
                             : 'bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 hover:border-border/50'
@@ -1048,7 +1068,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                         <span className="flex items-center justify-between gap-2 min-w-0">
                           <span className="flex items-center gap-2 min-w-0">
                             {isSelectedForDrawing && (
-                              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                               </svg>
                             )}
@@ -1062,14 +1082,31 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                         </span>
                       </button>
                     );
-                  }
+                  })}
+                </div>
+              </div>
+            )}
 
-                  // Normal mode - multi select for upload
+            {/* Classification Section — always visible and interactive */}
+            <div className="p-4">
+              <h3 className="text-white font-semibold text-sm mb-1 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+                Classification
+              </h3>
+              <p className="text-text-muted text-[10px] mb-2">Added to filename when uploading</p>
+              <div className="space-y-1.5">
+                {tags.map((tag) => {
+                  const isSelectedForUpload = localTags.includes(tag);
+                  const hexColor = tagColors[tag] || '#666666';
+                  const tagAnnotationCount = currentAnnotations.filter((a) => a.title === tag).length;
+
                   return (
                     <button
                       key={tag}
-                      onClick={() => handleTagClick(tag)}
-                      className={`w-full px-3 py-2.5 rounded-lg font-medium text-sm text-left transition-all transform hover:scale-[1.02] ${
+                      onClick={() => handleUploadTagClick(tag)}
+                      className={`w-full px-3 py-2 rounded-lg font-medium text-sm text-left transition-all ${
                         isSelectedForUpload
                           ? 'text-white shadow-lg border border-white/20'
                           : 'bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 hover:border-border/50'
@@ -1079,7 +1116,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                       <span className="flex items-center justify-between gap-2 min-w-0">
                         <span className="flex items-center gap-2 min-w-0">
                           {isSelectedForUpload && (
-                            <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
                           )}
