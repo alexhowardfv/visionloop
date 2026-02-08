@@ -4,7 +4,16 @@ import React, { useMemo } from 'react';
 import { ImageGridProps } from '@/types';
 import { ImageCard } from './ImageCard';
 
-function getOptimalColumns(count: number): number {
+function getOptimalColumns(count: number, isPortrait = false): number {
+  if (isPortrait) {
+    if (count <= 1) return 1;
+    if (count <= 2) return 1;
+    if (count <= 4) return 2;
+    if (count <= 6) return 2;
+    if (count <= 12) return 3;
+    if (count <= 20) return 4;
+    return 4;
+  }
   if (count <= 1) return 1;
   if (count === 2) return 2;
   if (count === 3) return 3;
@@ -21,6 +30,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({
   selectedImages,
   onToggleSelection,
   cameraFilter,
+  isPortrait,
 }) => {
   const filteredROIs = useMemo(() => {
     if (cameraFilter === 'all') {
@@ -29,7 +39,7 @@ export const ImageGrid: React.FC<ImageGridProps> = ({
     return rois.filter((roi) => roi.cameraId.toLowerCase().includes(cameraFilter.toLowerCase()));
   }, [rois, cameraFilter]);
 
-  const columns = useMemo(() => getOptimalColumns(filteredROIs.length), [filteredROIs.length]);
+  const columns = useMemo(() => getOptimalColumns(filteredROIs.length, isPortrait), [filteredROIs.length, isPortrait]);
 
   const getImageKey = (roi: { batchId: string; boxNumber: number }) =>
     `${roi.batchId}_${roi.boxNumber}`;

@@ -41,18 +41,18 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
     <header className={`fixed top-0 left-0 right-0 h-16 backdrop-blur-glass border-b z-50 transition-colors ${
       isPaused ? 'bg-yellow-900/30 border-yellow-600/40' : 'bg-primary/80 border-border'
     }`}>
-      <div className="h-full px-6 grid grid-cols-[1fr_auto_1fr] items-center">
+      <div className="h-full px-6 portrait:px-3 grid grid-cols-[1fr_auto_1fr] items-center">
         {/* Left: Logo */}
-        <div className="flex items-center gap-3">
-          <Image src="/logo.png" alt="Logo" width={64} height={64} className="rounded" />
+        <div className="flex items-center gap-3 portrait:gap-2">
+          <Image src="/logo.png" alt="Logo" width={64} height={64} className="rounded portrait:w-10 portrait:h-10" />
           <div>
-            <h1 className="text-white font-semibold text-lg">Flexible Vision Loop</h1>
-            <p className="text-text-muted text-xs">Real-time Inspection Feedback</p>
+            <h1 className="text-white font-semibold text-lg portrait:text-sm">Flexible Vision Loop</h1>
+            <p className="text-text-muted text-xs portrait:hidden">Real-time Inspection Feedback</p>
           </div>
         </div>
 
         {/* Center: Pause/Resume */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 portrait:gap-2">
           <button
             onClick={onTogglePause}
             className={`px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
@@ -88,7 +88,7 @@ export const Header: React.FC<ExtendedHeaderProps> = ({
         </div>
 
         {/* Right: Notification + Action buttons + Auth */}
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex items-center gap-3 portrait:gap-2 justify-end">
           {/* Inline Notification */}
           {notification?.isVisible && (
             <div

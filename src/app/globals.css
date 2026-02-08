@@ -84,6 +84,16 @@ body {
   animation: fade-in 0.2s ease-out;
 }
 
+@keyframes marching-dots {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+.annotation-border-animated {
+  animation: marching-dots 0.6s linear infinite;
+}
+
 /* Tag Color Classes */
 .tag-defect {
   background: rgba(220, 38, 38, 0.3);

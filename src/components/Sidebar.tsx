@@ -15,14 +15,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenReview,
   onAddToProject,
   onClearSelection,
+  isPortrait,
 }) => {
   const tags = availableTags.length > 0 ? availableTags : [];
 
   return (
-    <aside className="fixed right-0 top-16 bottom-12 w-80 bg-primary/80 backdrop-blur-glass border-l border-border overflow-y-auto overflow-x-hidden">
-      <div className="p-5 space-y-4">
+    <aside className={`fixed right-0 top-16 bottom-12 bg-primary/80 backdrop-blur-glass border-l border-border overflow-y-auto overflow-x-hidden ${isPortrait ? 'w-56' : 'w-80'}`}>
+      <div className={`${isPortrait ? 'p-3 space-y-3' : 'p-5 space-y-4'}`}>
         {/* Card 1: Selection */}
-        <div className="bg-primary-lighter/30 rounded-lg border border-border/30 p-4 space-y-3">
+        <div className={`bg-primary-lighter/30 rounded-lg border border-border/30 space-y-3 ${isPortrait ? 'p-3' : 'p-4'}`}>
           <div className="flex items-center justify-between">
             <h3 className="text-white font-semibold text-sm">Selection</h3>
             <div className="bg-blue-600 text-white px-2.5 py-0.5 rounded-full text-xs font-medium">
@@ -58,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Card 2: Classification */}
-        <div className="bg-primary-lighter/30 rounded-lg border border-border/30 p-4 space-y-3">
+        <div className={`bg-primary-lighter/30 rounded-lg border border-border/30 space-y-3 ${isPortrait ? 'p-3' : 'p-4'}`}>
           <div>
             <h3 className="text-white font-semibold text-sm">Classification</h3>
             <p className="text-text-muted text-xs mt-1">Selected tags are added to the filename when uploading</p>
@@ -97,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={tag}
                   onClick={() => onToggleTag(tag)}
-                  className={`px-3 py-2.5 rounded-lg font-medium text-sm transition-all truncate ${
+                  className={`${isPortrait ? 'px-2 py-2' : 'px-3 py-2.5'} rounded-lg font-medium text-sm transition-all truncate ${
                     isSelected
                       ? 'text-white shadow-lg'
                       : 'bg-primary/40 text-text-secondary hover:bg-primary/60'
@@ -113,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Card 3: Upload */}
-        <div className="bg-primary-lighter/30 rounded-lg border border-border/30 p-4 space-y-3">
+        <div className={`bg-primary-lighter/30 rounded-lg border border-border/30 space-y-3 ${isPortrait ? 'p-3' : 'p-4'}`}>
           <div>
             <h3 className="text-white font-semibold text-sm">Upload</h3>
             <p className="text-text-muted text-xs mt-1">Send selected images to the cloud project</p>
@@ -125,7 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {selectedTags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-0.5 rounded text-xs font-medium text-white truncate max-w-[120px]"
+                  className={`px-2 py-0.5 rounded text-xs font-medium text-white truncate ${isPortrait ? 'max-w-[80px]' : 'max-w-[120px]'}`}
                   style={{ backgroundColor: tagColors[tag] || '#666666' }}
                   title={tag}
                 >

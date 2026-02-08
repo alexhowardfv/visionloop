@@ -5,6 +5,7 @@ import { AppProvider, useAppContext } from '@/contexts/AppContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useNotification } from '@/hooks/useNotification';
+import { useIsPortrait } from '@/hooks/useIsPortrait';
 import { getAPIClient } from '@/lib/api';
 import { generateImageName, extractOriginalName } from '@/lib/imageNaming';
 import { Header } from '@/components/Header';
@@ -37,6 +38,7 @@ function VisionLoopApp() {
   } = useAppContext();
   const { isAuthenticated, userId, login, logout } = useAuth();
   const { notification, showNotification } = useNotification();
+  const isPortrait = useIsPortrait();
   const [fps, setFps] = useState(0);
   const [lastBatchTime, setLastBatchTime] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -554,6 +556,9 @@ function VisionLoopApp() {
     setIsMockDataActive(enabled);
 
     if (enabled) {
+      // Ensure stream is unpaused so ADD_BATCH won't be dropped by the reducer
+      dispatch({ type: 'SET_PAUSED', payload: false });
+
       import('@/lib/mockDataGenerator').then(({ generateMockBatch, getMockTagsAndColors }) => {
         // Load mock tags so sidebar tags and annotations work
         const { tags, colors } = getMockTagsAndColors();
@@ -572,6 +577,9 @@ function VisionLoopApp() {
           const batch = generateMockBatch({ cameraCount, failRate });
           dispatch({ type: 'ADD_BATCH', payload: batch });
         }, intervalMs);
+      }).catch((err) => {
+        console.error('[MockData] Failed to load or generate mock data:', err);
+        setIsMockDataActive(false);
       });
     }
   }, [dispatch]);
@@ -629,7 +637,7 @@ function VisionLoopApp() {
       />
 
       {/* Main Content Area */}
-      <main className="pt-16 pb-12 pr-80">
+      <main className={`pt-16 pb-12 ${isPortrait ? 'pr-56' : 'pr-80'}`}>
         {/* Batch Queue Strip */}
         <BatchCarousel
           batchQueue={state.batchQueue}
@@ -638,6 +646,8 @@ function VisionLoopApp() {
           selectedImages={state.selectedImages}
           overallStatus={state.currentBatch?.overallStatus || 'UNKNOWN'}
           maxQueueSize={maxBatchQueue}
+          onMaxQueueSizeChange={handleMaxBatchQueueChange}
+          isPortrait={isPortrait}
         />
 
         {/* Image Grid */}
@@ -647,6 +657,7 @@ function VisionLoopApp() {
             selectedImages={state.selectedImages}
             onToggleSelection={handleToggleSelection}
             cameraFilter={state.cameraFilter}
+            isPortrait={isPortrait}
           />
         ) : (
           <div className="flex items-center justify-center h-[calc(100vh-112px)]">
@@ -673,6 +684,7 @@ function VisionLoopApp() {
         onOpenReview={handleOpenReview}
         onAddToProject={handleAddAllSelectedToProject}
         onClearSelection={() => dispatch({ type: 'CLEAR_SELECTIONS' })}
+        isPortrait={isPortrait}
       />
 
       {/* Footer */}

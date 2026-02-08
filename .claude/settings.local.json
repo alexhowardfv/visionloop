@@ -34,7 +34,15 @@
       "Bash(git push:*)",
       "Bash(powershell -Command \"Get-Content ''c:\\\\Users\\\\Alex\\\\Downloads\\\\websocket-data-1767823448351.json'' | Select-Object -First 150\")",
       "Bash(powershell -Command:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx next lint)",
+      "Bash(npm run dev:restart:*)",
+      "Bash(npx next build:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(cmd /c \"taskkill /PID 9648 /F\")",
+      "Bash(git status:*)",
+      "Bash(npx next dev:*)",
+      "Bash(npx next lint:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ImageReviewModalProps, ManualAnnotation } from '@/types';
+import { ImageReviewModalProps, ManualAnnotation, DetectionActionState, BoundingBox } from '@/types';
 import { ImageWithBoundingBoxes } from './ImageWithBoundingBoxes';
 import { AnnotationLayer } from './AnnotationLayer';
 import { Tooltip } from './Tooltip';
@@ -142,6 +142,11 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   const [showNoTagWarning, setShowNoTagWarning] = useState(false);
   const noTagWarningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Detection action state — per-image, session-scoped (persists across image navigation within modal)
+  const [detectionActionsMap, setDetectionActionsMap] = useState<
+    Map<string, Map<number, DetectionActionState>>
+  >(new Map());
+
   // Image dimensions for AnnotationLayer positioning
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [imagePosition, setImagePosition] = useState({ left: 0, top: 0 });
@@ -157,6 +162,7 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
   // Get current image key and annotations
   const imageKey = currentImage ? `${currentImage.batchId}_${currentImage.boxNumber}` : '';
   const currentAnnotations = imageAnnotations.get(imageKey) || [];
+  const currentDetectionActions = detectionActionsMap.get(imageKey) || new Map<number, DetectionActionState>();
 
   // Find the batch for the current image to get model and version
   const currentBatch = batchQueue.find(batch => batch.id === currentImage?.batchId);
@@ -293,6 +299,72 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
     onSetImageAnnotations(imageKey, []);
     setSelectedAnnotationId(null);
   }, [imageKey, onSetImageAnnotations]);
+
+  // Detection action handlers
+  const handleDetectionAction = useCallback((index: number, action: DetectionActionState) => {
+    setDetectionActionsMap((prev) => {
+      const next = new Map(prev);
+      const imageActions = new Map(next.get(imageKey) || new Map<number, DetectionActionState>());
+      imageActions.set(index, action);
+      next.set(imageKey, imageActions);
+      return next;
+    });
+  }, [imageKey]);
+
+  const handleConvertToAnnotation = useCallback((detection: BoundingBox, index: number) => {
+    const newAnnotation: ManualAnnotation = {
+      id: `ann_conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      index: currentAnnotations.length,
+      title: detection.label || 'Detection',
+      tool: 'tagBox',
+      flag: detection.color || '#3b82f6',
+      shape: {
+        p1: { x: detection.x, y: detection.y },
+        p2: { x: detection.x + detection.width, y: detection.y + detection.height },
+      },
+      convertedFromDetectionIndex: index,
+    };
+    onAddAnnotation(imageKey, newAnnotation);
+    setLocalTags((prev) =>
+      prev.includes(newAnnotation.title) ? prev : [...prev, newAnnotation.title]
+    );
+    // Mark detection as converted (rejected)
+    handleDetectionAction(index, { status: 'rejected' });
+  }, [imageKey, currentAnnotations.length, onAddAnnotation, handleDetectionAction]);
+
+  const handleUndoConversion = useCallback((annotation: ManualAnnotation) => {
+    const detIndex = annotation.convertedFromDetectionIndex;
+    onDeleteAnnotation(imageKey, annotation.id);
+    if (selectedAnnotationId === annotation.id) {
+      setSelectedAnnotationId(null);
+    }
+    if (detIndex !== undefined) {
+      setDetectionActionsMap((prev) => {
+        const next = new Map(prev);
+        const imageActions = new Map(next.get(imageKey) || new Map<number, DetectionActionState>());
+        imageActions.delete(detIndex);
+        next.set(imageKey, imageActions);
+        return next;
+      });
+    }
+  }, [imageKey, onDeleteAnnotation, selectedAnnotationId]);
+
+  const handleResetAllDetectionActions = useCallback(() => {
+    // Remove all annotations that were converted from detections
+    const remaining = currentAnnotations.filter(a => a.convertedFromDetectionIndex === undefined);
+    if (remaining.length !== currentAnnotations.length) {
+      onSetImageAnnotations(imageKey, remaining);
+      if (selectedAnnotationId && !remaining.find(a => a.id === selectedAnnotationId)) {
+        setSelectedAnnotationId(null);
+      }
+    }
+    // Clear all detection action states
+    setDetectionActionsMap((prev) => {
+      const next = new Map(prev);
+      next.delete(imageKey);
+      return next;
+    });
+  }, [imageKey, currentAnnotations, onSetImageAnnotations, selectedAnnotationId]);
 
   // Keyboard navigation and shortcuts
   useEffect(() => {
@@ -433,11 +505,14 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-primary rounded-xl shadow-elevated overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-[1382px] h-[95vh] bg-primary rounded-xl shadow-elevated overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-white text-xl font-semibold">
-            Image Review ({currentIndex + 1} of {totalImages})
+          <h2 className="text-white text-xl font-semibold flex items-center gap-2.5">
+            Image Review
+            <span className="bg-blue-600 text-white px-2.5 py-0.5 rounded-full text-xs font-medium">
+              {totalImages}
+            </span>
           </h2>
 
           {/* Center Info - Camera ID and Result */}
@@ -674,11 +749,12 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                     zoom={zoom}
                     showLabels={true}
                     onDimensionsCalculated={handleDimensionsCalculated}
-                    hideBoundingBoxes={isAnnotationMode}
+                    hideBoundingBoxes={true}
                   />
                   {/* Annotation Layer - only visible when dimensions are available */}
                   {imageDimensions.width > 0 && (
                     <AnnotationLayer
+                      key={imageKey}
                       imageDimensions={imageDimensions}
                       imagePosition={imagePosition}
                       existingDetections={currentImage.detections}
@@ -693,6 +769,14 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                       onDeleteAnnotation={handleDeleteAnnotation}
                       onSelectAnnotation={handleSelectAnnotation}
                       onNoTagSelected={triggerNoTagWarning}
+                      expandableDetections={true}
+                      detectionActions={currentDetectionActions}
+                      onDetectionAction={handleDetectionAction}
+                      onConvertToAnnotation={handleConvertToAnnotation}
+                      onUndoConversion={handleUndoConversion}
+                      availableTags={tags}
+                      modelName={model}
+                      modelVersion={version}
                     />
                   )}
                 </div>
@@ -735,6 +819,115 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
                       className="w-full px-3 py-2 rounded-lg bg-primary/60 text-text-secondary hover:bg-primary border border-border/30 transition-all text-sm"
                     >
                       Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Detection Review Panel */}
+            {currentImage.detections && currentImage.detections.length > 0 && (
+              <div className="border-b border-border/30 p-4">
+                <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                  <span className="text-[9px] font-bold bg-white text-gray-900 px-1.5 py-0.5 rounded">AI</span>
+                  Detections ({currentImage.detections.length})
+                </h3>
+                <div className="space-y-1">
+                  {currentImage.detections.map((det, i) => {
+                    const action = currentDetectionActions.get(i);
+                    const isConverted = currentAnnotations.some(
+                      (a) => a.convertedFromDetectionIndex === i
+                    );
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-center gap-2 text-xs py-1 ${
+                          isConverted ? 'opacity-50' : action?.status === 'rejected' ? 'opacity-40' : ''
+                        }`}
+                      >
+                        <div
+                          className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                          style={{
+                            backgroundColor: isConverted
+                              ? '#3b82f6'
+                              : action?.status === 'accepted'
+                              ? '#22c55e'
+                              : action?.reclassifiedTo
+                              ? (tagColors[action.reclassifiedTo] || det.color || '#ef4444')
+                              : (det.color || '#ef4444'),
+                          }}
+                        />
+                        <span
+                          className={`flex-1 truncate ${
+                            isConverted
+                              ? 'line-through text-text-muted'
+                              : action?.reclassifiedTo
+                              ? 'line-through text-text-muted'
+                              : 'text-white'
+                          }`}
+                        >
+                          {det.label || 'Detection'}
+                        </span>
+                        {isConverted ? (
+                          <>
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                              converted
+                            </span>
+                            <Tooltip content="Undo conversion" position="top">
+                              <button
+                                onClick={() => {
+                                  const ann = currentAnnotations.find(a => a.convertedFromDetectionIndex === i);
+                                  if (ann) handleUndoConversion(ann);
+                                }}
+                                className="text-amber-500 hover:text-amber-400 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                                  <path d="M8.5 3A5 5 0 1 1 4.5 12" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" fill="none" />
+                                  <path d="M6 1L8.5 3L6 5" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                                </svg>
+                              </button>
+                            </Tooltip>
+                          </>
+                        ) : (
+                          <>
+                            {action?.reclassifiedTo && (
+                              <span className="text-blue-400 text-[11px]">
+                                {action.reclassifiedTo}
+                              </span>
+                            )}
+                            {action?.status && (
+                              <span
+                                className={`text-[10px] px-1 py-0.5 rounded ${
+                                  action.status === 'accepted'
+                                    ? 'bg-green-500/20 text-green-400'
+                                    : 'bg-red-500/20 text-red-400'
+                                }`}
+                              >
+                                {action.status === 'rejected'
+                                  ? action.rejectionReason === 'false_positive'
+                                    ? 'false pos.'
+                                    : action.rejectionReason === 'wrong_label'
+                                    ? 'wrong label'
+                                    : 'rejected'
+                                  : action.status}
+                              </span>
+                            )}
+                            {det.confidence !== undefined && !action?.status && (
+                              <span className="text-text-muted">
+                                {(det.confidence * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {currentDetectionActions.size > 0 && (
+                    <button
+                      onClick={handleResetAllDetectionActions}
+                      className="w-full mt-2 py-1.5 rounded-lg border border-border/30 bg-transparent text-text-secondary hover:text-white hover:border-border/50 transition-colors text-xs"
+                    >
+                      Reset All Actions
                     </button>
                   )}
                 </div>
@@ -822,13 +1015,13 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
               )}
             </div>
 
-            {/* Tag Selection Section */}
+            {/* Label Selection Section */}
             <div className="p-4">
               <h3 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
-                {isAnnotationMode ? 'Select Tag to Draw' : 'Tag Selection'}
+                {isAnnotationMode ? 'Select Label to Draw' : 'Label Selection'}
               </h3>
               <div className="space-y-2">
                 {tags.map((tag) => {
@@ -920,6 +1113,9 @@ export const ImageReviewModal: React.FC<ImageReviewModalProps> = ({
             >
               ← Previous
             </button>
+            <span className="text-text-secondary text-sm font-mono min-w-[60px] text-center">
+              {currentIndex + 1} / {totalImages}
+            </span>
             <button
               onClick={handleRemove}
               className="px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-all"

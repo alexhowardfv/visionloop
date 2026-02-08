@@ -33,6 +33,7 @@ export interface ManualAnnotation {
     p1: { x: number; y: number };     // Top-left (normalized 0-1)
     p2: { x: number; y: number };     // Bottom-right (normalized 0-1)
   };
+  convertedFromDetectionIndex?: number; // Set when converted from AI detection
 }
 
 export interface ROIImage {
@@ -164,6 +165,7 @@ export interface ImageGridProps {
   selectedImages: Map<string, SelectedImage>;
   onToggleSelection: (batchId: string, boxNumber: number) => void;
   cameraFilter: string;
+  isPortrait?: boolean;
 }
 
 export interface BatchCarouselProps {
@@ -173,6 +175,8 @@ export interface BatchCarouselProps {
   selectedImages?: Map<string, SelectedImage>;
   overallStatus?: 'PASS' | 'FAIL' | 'UNKNOWN';
   maxQueueSize?: number;
+  onMaxQueueSizeChange?: (size: number) => void;
+  isPortrait?: boolean;
 }
 
 export interface SidebarProps {
@@ -186,6 +190,7 @@ export interface SidebarProps {
   onOpenReview: () => void;
   onAddToProject: () => void;
   onClearSelection: () => void;
+  isPortrait?: boolean;
 }
 
 export interface ImageReviewModalProps {
@@ -223,4 +228,23 @@ export interface FooterProps {
   model: string;
   version: string;
   isConnected: boolean;
+}
+
+// Sandbox: overridable marker rendering constants
+export interface MarkerConstants {
+  LABEL_HEIGHT: number;
+  LABEL_FONT_SIZE: number;
+  LABEL_CHAR_WIDTH: number;
+  LABEL_PADDING: number;
+  ACTION_BTN_SIZE: number;
+  DETECTION_LABEL_RADIUS: number;
+  ANNOTATION_LABEL_RADIUS: number;
+}
+
+// Sandbox: detection action state for expandable markers
+export interface DetectionActionState {
+  status: 'pending' | 'accepted' | 'rejected';
+  rejectionReason?: 'false_positive' | 'wrong_label';
+  originalLabel?: string;
+  reclassifiedTo?: string;
 }

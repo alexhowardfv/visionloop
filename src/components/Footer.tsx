@@ -4,7 +4,7 @@ import React from 'react';
 import { FooterProps } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 
-export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, fps, model, version, isConnected }) => {
+export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, model, version, isConnected }) => {
   const { isAuthenticated, isHydrated } = useAuth();
   const getTimeSinceUpdate = () => {
     if (lastUpdateTime === 0) return 'N/A';
@@ -15,33 +15,28 @@ export const Footer: React.FC<FooterProps> = ({ lastUpdateTime, fps, model, vers
 
   return (
     <footer className="fixed bottom-0 left-0 right-0 h-12 bg-primary/80 backdrop-blur-glass border-t border-border z-40">
-      <div className="h-full px-6 flex items-center justify-between text-text-secondary text-sm">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted">Model:</span>
+      <div className="h-full px-6 portrait:px-3 flex items-center justify-between text-text-secondary text-sm portrait:text-xs">
+        <div className="flex items-center gap-6 portrait:gap-3">
+          <div className="flex items-center gap-2 portrait:gap-1">
+            <span className="text-text-muted portrait:hidden">Model:</span>
             <span className="text-white font-medium">{model}</span>
           </div>
 
 
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted">Version:</span>
+          <div className="flex items-center gap-2 portrait:gap-1">
+            <span className="text-text-muted portrait:hidden">Version:</span>
             <span className="text-white font-medium">{version}</span>
           </div>
 
 
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted">Last Update:</span>
+          <div className="flex items-center gap-2 portrait:gap-1">
+            <span className="text-text-muted portrait:hidden">Last Update:</span>
             <span className="text-white font-medium">{getTimeSinceUpdate()}</span>
           </div>
 
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-text-muted">FPS:</span>
-            <span className="text-white font-medium">{fps.toFixed(1)}</span>
-          </div>
-
+        <div className="flex items-center gap-6 portrait:gap-3">
 
           {isHydrated && (isAuthenticated ? (
             <div className="flex items-center gap-2 bg-green-600/20 px-3 py-1 rounded-full">

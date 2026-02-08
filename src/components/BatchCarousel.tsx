@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { BatchCarouselProps } from '@/types';
 
 export const BatchCarousel: React.FC<BatchCarouselProps> = ({
@@ -10,9 +10,25 @@ export const BatchCarousel: React.FC<BatchCarouselProps> = ({
   selectedImages,
   overallStatus = 'UNKNOWN',
   maxQueueSize,
+  onMaxQueueSizeChange,
+  isPortrait,
 }) => {
   // Track hover by batch ID so tooltip follows the correct batch when indices shift
   const [hoveredBatchId, setHoveredBatchId] = useState<string | null>(null);
+  const [showQueuePopover, setShowQueuePopover] = useState(false);
+  const queueBadgeRef = useRef<HTMLDivElement>(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!showQueuePopover) return;
+    const handleClick = (e: MouseEvent) => {
+      if (queueBadgeRef.current && !queueBadgeRef.current.contains(e.target as Node)) {
+        setShowQueuePopover(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showQueuePopover]);
 
   // FLIP animation refs
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -118,7 +134,7 @@ export const BatchCarousel: React.FC<BatchCarouselProps> = ({
 
   return (
     <div className="relative z-10 w-full bg-primary/60 backdrop-blur-glass py-1.5 overflow-x-clip overflow-y-visible">
-      <div className="relative flex items-center justify-center gap-1.5 h-11 px-[50px]">
+      <div className={`relative flex items-center justify-center h-11 ${isPortrait ? 'gap-1 px-[30px]' : 'gap-1.5 px-[50px]'}`}>
         {/* Overall status indicator - anchored left */}
         <div className={`absolute left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-md flex-shrink-0 ${
           overallStatus === 'PASS'
@@ -137,9 +153,44 @@ export const BatchCarousel: React.FC<BatchCarouselProps> = ({
           <span className="text-xs font-semibold">{overallStatus}</span>
         </div>
 
-        <span className="text-text-secondary text-sm font-medium mr-2 flex-shrink-0">
-          Queue ({batchQueue.length}{maxQueueSize ? `/${maxQueueSize}` : ''})
-        </span>
+        <div ref={queueBadgeRef} className="relative mr-2 flex-shrink-0">
+          <button
+            onClick={() => onMaxQueueSizeChange && setShowQueuePopover((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10 text-text-secondary text-xs font-semibold transition-colors ${
+              onMaxQueueSizeChange ? 'cursor-pointer hover:bg-white/20 hover:border-white/20' : ''
+            }`}
+          >
+            Queue
+            <span className="text-white/90">{batchQueue.length}{maxQueueSize ? `/${maxQueueSize}` : ''}</span>
+          </button>
+
+          {showQueuePopover && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50">
+              <div className="w-[180px] bg-primary-lighter border border-border rounded-lg shadow-xl p-3">
+                <p className="text-text-secondary text-xs font-medium mb-2">Queue Size</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[5, 10, 20].map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => {
+                        onMaxQueueSizeChange?.(size);
+                        setShowQueuePopover(false);
+                      }}
+                      className={`px-2 py-1.5 border rounded-md text-xs font-medium transition-all ${
+                        maxQueueSize === size
+                          ? 'bg-purple-600 border-purple-500 text-white'
+                          : 'bg-primary-lighter hover:bg-primary-lighter/70 border-border text-text-secondary hover:text-white'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-primary-lighter border-l border-t border-border rotate-45"></div>
+            </div>
+          )}
+        </div>
 
         {batchQueue.map((batch, index) => {
           const isActive = index === currentIndex;
@@ -177,7 +228,7 @@ export const BatchCarousel: React.FC<BatchCarouselProps> = ({
                 onClick={() => onNavigate(index)}
                 onMouseEnter={() => setHoveredBatchId(batch.id)}
                 onMouseLeave={() => setHoveredBatchId(null)}
-                className={`w-11 h-8 rounded-md transition-all flex items-center justify-center ${cardColor} ${
+                className={`${isPortrait ? 'w-9 h-7' : 'w-11 h-8'} rounded-md transition-all flex items-center justify-center ${cardColor} ${
                   isActive ? 'scale-y-110' : ''
                 } ${expiringStyle}`}
               >
